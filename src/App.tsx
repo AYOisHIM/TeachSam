@@ -1,0 +1,1559 @@
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { 
+  GraduationCap, 
+  Library, 
+  User, 
+  Sparkles, 
+  Send, 
+  Mic, 
+  MicOff, 
+  UploadCloud, 
+  Volume2, 
+  Plus, 
+  FileText, 
+  CheckCircle2, 
+  BookOpen, 
+  TrendingUp, 
+  BrainCircuit, 
+  Award, 
+  CornerDownRight, 
+  RefreshCw, 
+  X,
+  AlertCircle,
+  Clock,
+  ExternalLink,
+  ChevronRight,
+  Sparkle,
+  Sun,
+  Moon
+} from "lucide-react";
+import SideMenu from "./components/SideMenu";
+import AvatarMascot from "./components/AvatarMascot";
+import { Lesson, ConceptNode, Message, DailyGoal, BrainStats } from "./types";
+
+export default function App() {
+  const [currentTab, setCurrentTab] = useState<"practice" | "vault" | "profile">("practice");
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [activeLessonId, setActiveLessonId] = useState<string>("");
+  const [activeConceptId, setActiveConceptId] = useState<string>("");
+  const [chatHistories, setChatHistories] = useState<Record<string, Message[]>>({});
+  const [userInput, setUserInput] = useState<string>("");
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+
+  // User Customizable Name requested
+  const [userName, setUserName] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("teachsam-username");
+      return saved ? saved : "David"; // Nice default mockup name fallback
+    }
+    return "David";
+  });
+
+  // Snapchat-like Streak requested (Starts at 1, resets if inactive for 48h, increments if consecutive after 24h)
+  const [streakCount, setStreakCount] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const savedCount = localStorage.getItem("teachsam-streak-count");
+      const lastAct = localStorage.getItem("teachsam-streak-last-activity");
+      
+      if (savedCount && lastAct) {
+        const lastActTime = parseInt(lastAct, 10);
+        const hoursPassed = (Date.now() - lastActTime) / (1000 * 60 * 60);
+        
+        if (hoursPassed > 48) {
+          // Exceeded Snapchat-like active period! Reset streak to 1
+          localStorage.setItem("teachsam-streak-count", "1");
+          return 1;
+        }
+        return parseInt(savedCount, 10);
+      }
+      return 1; // Default starting count is 1 as requested
+    }
+    return 1;
+  });
+
+  const triggerStreakIncrement = () => {
+    const now = Date.now();
+    const lastAct = localStorage.getItem("teachsam-streak-last-activity");
+    const savedCount = localStorage.getItem("teachsam-streak-count");
+    
+    let curCount = savedCount ? parseInt(savedCount, 10) : 1;
+    
+    if (lastAct) {
+      const lastActTime = parseInt(lastAct, 10);
+      const hoursPassed = (now - lastActTime) / (1000 * 60 * 60);
+      
+      if (hoursPassed > 48) {
+        // Snapchat rule: expired after 48h since last study check. Start over at 1
+        curCount = 1;
+      } else if (hoursPassed >= 24) {
+        // Consecutive daily lesson check done after 24h! Increment streak
+        curCount += 1;
+      }
+      // Else: less than 24 hours, count stays the same to maintain the active snapshot
+    } else {
+      // First activity milestone
+      curCount = 1;
+    }
+    
+    localStorage.setItem("teachsam-streak-count", curCount.toString());
+    localStorage.setItem("teachsam-streak-last-activity", now.toString());
+    setStreakCount(curCount);
+  };
+
+  // Theme support
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("teachsam-theme");
+      return (saved === "dark" || saved === "light") ? saved : "light";
+    }
+    return "light";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("teachsam-theme", theme);
+  }, [theme]);
+  
+  // Real Doc Upload & Voice recording References
+  const [isParsingFile, setIsParsingFile] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+  
+  // Modal States
+  const [isProModalOpen, setIsProModalOpen] = useState<boolean>(false);
+  const [isNewLessonModalOpen, setIsNewLessonModalOpen] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const [recordingWaveform, setRecordingWaveform] = useState<number[]>([]);
+
+  // New Lesson form state
+  const [newTitle, setNewTitle] = useState<string>("");
+  const [newSubject, setNewSubject] = useState<string>("");
+  const [newContent, setNewContent] = useState<string>("");
+  const [formError, setFormError] = useState<string>("");
+
+  // Daily Goals state
+  const [dailyGoals, setDailyGoals] = useState<DailyGoal[]>([
+    { id: "upload-1", text: "Upload 1 Textbook Chapter", completed: false },
+    { id: "quiz-1", text: "Complete 1 Teaching Quiz", completed: true },
+    { id: "mistakes", text: "Clear active concept blockers", completed: false }
+  ]);
+
+  // Mascot dynamic facial expressions: "neutral", "confused", "amazed", "thinking", "happy"
+  const [mascotExpression, setMascotExpression] = useState<"neutral" | "confused" | "amazed" | "thinking" | "happy">("happy");
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const recordingTimerRef = useRef<any>(null);
+
+  // Fetch lessons from DB on load
+  const loadLessons = async () => {
+    try {
+      const resp = await fetch("/api/lessons");
+      const data = await resp.json();
+      setLessons(data);
+      if (data.length > 0) {
+        // Set first active
+        setActiveLessonId(data[0].id);
+        const activeNode = data[0].concepts.find((c: ConceptNode) => c.status === "active") || data[0].concepts[0];
+        if (activeNode) {
+          setActiveConceptId(activeNode.id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load lessons:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadLessons();
+  }, []);
+
+  const activeLesson = lessons.find(l => l.id === activeLessonId);
+
+  // Determine active concept node safely
+  useEffect(() => {
+    if (activeLesson) {
+      const activeNode = activeLesson.concepts.find(c => c.status === "active");
+      if (activeNode && activeConceptId !== activeNode.id) {
+        setActiveConceptId(activeNode.id);
+      } else if (!activeConceptId && activeLesson.concepts.length > 0) {
+        setActiveConceptId(activeLesson.concepts[0].id);
+      }
+    }
+  }, [activeLessonId, lessons]);
+
+  // Set initial greeting from Sam when Lesson changes or on start
+  useEffect(() => {
+    if (activeLessonId && !chatHistories[activeLessonId]) {
+      const targetLesson = lessons.find(l => l.id === activeLessonId);
+      const activeNode = targetLesson?.concepts.find(c => c.id === activeConceptId) || targetLesson?.concepts[0];
+      const initialGreeting: Message = {
+        id: `greeting-${Date.now()}`,
+        sender: "sam",
+        text: `Hey ${userName}! Ready to teach me something cool today? I've been looking over your notes on "${targetLesson?.title || "Physics"}". Can you explain to me what "${activeNode?.label || "the first concept"}" is? I'm all ears! 👂🌱`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatHistories(prev => ({
+        ...prev,
+        [activeLessonId]: [initialGreeting]
+      }));
+    }
+  }, [activeLessonId, lessons, activeConceptId, userName]);
+
+  // Auto scroll chat to bottom
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatHistories, activeLessonId, isEvaluating]);
+
+  // Handlers
+  const handleSendMessage = async (customText?: string) => {
+    const textToSend = customText || userInput;
+    if (!textToSend.trim() || !activeLessonId) return;
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      sender: "user",
+      text: textToSend,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const currentHistory = chatHistories[activeLessonId] || [];
+    const updatedHistory = [...currentHistory, userMsg];
+
+    setChatHistories(prev => ({
+      ...prev,
+      [activeLessonId]: updatedHistory
+    }));
+    setUserInput("");
+    setIsEvaluating(true);
+    setMascotExpression("thinking");
+
+    try {
+      const response = await fetch("/api/chat/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lessonId: activeLessonId,
+          chatHistory: updatedHistory,
+          latestMessage: textToSend,
+          activeConceptId: activeConceptId,
+          userName // Pass custom username
+        })
+      });
+
+      const evaluatedSamMsg: Message = await response.json();
+      
+      setChatHistories(prev => ({
+        ...prev,
+        [activeLessonId]: [...updatedHistory, evaluatedSamMsg]
+      }));
+
+      // Adjust expression based on quality
+      if (evaluatedSamMsg.evaluation) {
+        const rating = evaluatedSamMsg.evaluation.clarity;
+        if (rating === "Excellent") {
+          setMascotExpression("amazed");
+          // Increment teaching daily goal
+          setDailyGoals(prev => prev.map(g => g.id === "quiz-1" ? { ...g, completed: true } : g));
+          triggerStreakIncrement(); // Daily streak update triggered on accurate lesson progression
+        } else if (rating === "Good") {
+          setMascotExpression("happy");
+          triggerStreakIncrement(); // Daily streak update triggered on accurate lesson progression
+        } else if (rating === "Struggling") {
+          setMascotExpression("confused");
+        } else {
+          setMascotExpression("neutral");
+        }
+      }
+
+      // Reload lessons to sync back state (active node & progress increments!)
+      await loadLessons();
+
+    } catch (err) {
+      console.error("Evaluation failure:", err);
+      // Fallback
+      setChatHistories(prev => ({
+        ...prev,
+        [activeLessonId]: [
+          ...updatedHistory,
+          {
+            id: `sam-error-${Date.now()}`,
+            sender: "sam",
+            text: "Ooh... my cellular receiver is buzzing static! Could you repeat that explanation? (Check your internet or Gemini API KEY Setup in the Secrets tab!)",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]
+      }));
+      setMascotExpression("confused");
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  // REAL Voice Speech Recording using browser Web Speech API
+  const startRecording = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Microphone speech recognition is not supported in this browser. Please use Chrome, Safari or Edge for full active vocal feature compatibility!");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        setIsRecording(true);
+        setRecordingSeconds(0);
+        setMascotExpression("thinking");
+        setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 30) + 15));
+
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingSeconds(prev => prev + 1);
+          setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 50) + 10));
+        }, 1000);
+      };
+
+      let accumulatedTranscript = "";
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = "";
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        const currentText = finalTranscript || interimTranscript;
+        if (currentText.trim()) {
+          accumulatedTranscript = currentText;
+          setUserInput(currentText);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition framework error:", event.error);
+        if (event.error === "not-allowed") {
+          alert("Microphone permission was denied. Please make sure microphone settings are allowed inside Google AI Studio preview frame!");
+        }
+      };
+
+      recognition.onend = () => {
+        clearInterval(recordingTimerRef.current);
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to boot speech parser:", err);
+    }
+  };
+
+  const stopRecordingAndSend = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    clearInterval(recordingTimerRef.current);
+    setIsRecording(false);
+    
+    // Send whatever was recorded in userInput
+    setTimeout(() => {
+      // In speech recognition, userInput is updated in state
+      if (userInput.trim()) {
+        handleSendMessage(userInput);
+      } else {
+        alert("We didn't catch any text. Please try speaking slowly near your microphone and click Done!");
+      }
+    }, 500);
+  };
+
+  const cancelRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.abort();
+    }
+    clearInterval(recordingTimerRef.current);
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    setUserInput("");
+  };
+
+  const handleNewTopicDiscussion = () => {
+    if (!activeLessonId) return;
+    const targetLesson = lessons.find(l => l.id === activeLessonId);
+    const activeNode = targetLesson?.concepts.find(c => c.status === "active") || targetLesson?.concepts[0];
+    
+    const initialGreeting: Message = {
+      id: `greeting-${Date.now()}`,
+      sender: "sam",
+      text: `Hey ${userName}! Ready to start a brand new topic discussion on "${targetLesson?.title || "Physics"}"? I have cleared our chat. Can you explain to me what "${activeNode?.label || "the active concept"}" is? I'm all ears! 👂🌱`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    setChatHistories(prev => ({
+      ...prev,
+      [activeLessonId]: [initialGreeting]
+    }));
+    setMascotExpression("happy");
+  };
+
+  // Real client-side file upload buffer pipeline
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingFile(true);
+    setMascotExpression("thinking");
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const resultString = e.target?.result as string;
+        // Strip down 'data:...;base64,' prefix
+        const base64Data = resultString.split(",")[1];
+
+        const response = await fetch("/api/lessons/parse-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: file.name,
+            fileType: file.type,
+            base64Data
+          })
+        });
+
+        if (!response.ok) {
+          const errBody = await response.json();
+          throw new Error(errBody.error || "Server could not parse file");
+        }
+
+        const parsedResult = await response.json();
+
+        // Populate new lesson creation modal details!
+        const parsedTitle = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+        setNewTitle(parsedTitle.substring(0, 50));
+        setNewSubject("Uploaded Material");
+        setNewContent(parsedResult.text);
+        
+        setIsNewLessonModalOpen(true);
+        setMascotExpression("happy");
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error("Parsing document workflow exception:", err);
+      alert(`Could not extract text: ${err.message || err}. Try copying and pasting document lines instead.`);
+      setMascotExpression("confused");
+    } finally {
+      setIsParsingFile(false);
+    }
+  };
+
+  // Reset entire database back to default seed lessons
+  const handleResetData = async () => {
+    if (confirm("Reset current progress and study roadmaps to original seeds?")) {
+      try {
+        await fetch("/api/lessons/reset", { method: "POST" });
+        await loadLessons();
+        setChatHistories({});
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  // Create new lesson via Gemini concept path generator
+  const handleCreateNewLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle || !newContent) {
+      setFormError("Must specify a Lesson Title and paste some reference materials!");
+      return;
+    }
+    setFormError("");
+    setIsGenerating(true);
+
+    try {
+      const resp = await fetch("/api/lessons/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle,
+          subject: newSubject || "General study",
+          content: newContent
+        })
+      });
+
+      if (!resp.ok) throw new Error("Server error generation");
+
+      const createdLesson = await resp.json();
+      
+      // Update local set & set active
+      await loadLessons();
+      setActiveLessonId(createdLesson.id);
+      setActiveConceptId(createdLesson.concepts[0]?.id || "");
+      
+      // Clean Form
+      setNewTitle("");
+      setNewSubject("");
+      setNewContent("");
+      setIsNewLessonModalOpen(false);
+
+      // Complete Daily goal
+      setDailyGoals(prev => prev.map(g => g.id === "upload-1" ? { ...g, completed: true } : g));
+      setMascotExpression("amazed");
+
+    } catch (err) {
+      console.error("Failed to generate content landscape:", err);
+      setFormError("Failed to parse document. Check your Gemini API Key in the Secrets tab!");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Mock click handle to populate textbook files directly
+  const loadPredefinedMaterials = (topic: string) => {
+    if (topic === "Gatsby") {
+      setNewTitle("The Great Gatsby Summary");
+      setNewSubject("Literature");
+      setNewContent("The Great Gatsby is a 1925 novel by American writer F. Scott Fitzgerald. Set in the Jazz Age on Long Island, near New York City, the novel depicts first-person narrator Nick Carraway's interactions with mysterious millionaire Jay Gatsby and Gatsby's obsession to reunite with his former lover, Daisy Buchanan. Character and symbolism elements: The green light at the end of Daisy's dock represents Gatsby's hopes and dreams for the future, standing for the unattainable American Dream.");
+    } else if (topic === "Mitosis") {
+      setNewTitle("Mitosis Phase Sequence");
+      setNewSubject("Biology");
+      setNewContent("Mitosis is a part of the cell cycle in which replicated chromosomes are separated into two new nuclei. This division gives rise to genetically identical cells in which the total number of chromosomes is maintained. Stages: Prophase (chromatin condenses into chromosomes), Metase (chromosomes line up along the cell equator), Anaphase (sister chromatids are pulled apart by spindle fibers), and Telophase (nuclear membranes reform around each cluster of chromosomes).");
+    }
+  };
+
+  return (
+    <div className={`flex min-h-screen select-none font-sans overflow-x-hidden ${theme === "dark" ? "bg-[#0e0f12] text-slate-100" : "bg-[#f9f9fa] text-black"}`}>
+      
+      {/* Neo-brutalist custom Sidebar Menu component */}
+      <SideMenu 
+        currentTab={currentTab} 
+        onTabChange={(tab) => setCurrentTab(tab)} 
+        expression={mascotExpression}
+        onTriggerPro={() => setIsProModalOpen(true)}
+        theme={theme}
+      />
+
+      {/* Main Study Desk Area */}
+      <main className="flex-1 flex flex-col min-h-screen overflow-y-auto">
+        
+        {/* Global Action Header with search mimicking mockup */}
+        <header className={`px-8 py-4 border-b-4 border-black flex items-center justify-between sticky top-0 z-10 shadow-[0_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+          <div className={`flex items-center gap-4 border-4 border-black px-4 py-2 rounded-full w-96 shadow-[2px_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#121318]" : "bg-slate-100"}`}>
+            <input 
+              type="text" 
+              placeholder="Search current lessons to teach..." 
+              className={`bg-transparent border-none text-xs font-black w-full outline-none ${theme === "dark" ? "text-white placeholder-gray-400" : "text-black placeholder-gray-500"}`} 
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* Day/Night Theme Toggler represented by Moon/Sun */}
+            <button
+              id="theme-toggler-btn"
+              onClick={() => setTheme(prev => prev === "light" ? "dark" : "light")}
+              title="Toggle Day/Night mode"
+              className={`p-2 rounded-full border-2 border-black font-bold transition-all shadow-[2px_2px_0px_0px_#000] active:translate-x-[1.5px] active:translate-y-[1.5px] active:shadow-none cursor-pointer flex items-center justify-center
+                ${theme === "dark" ? "bg-amber-400 text-black hover:bg-amber-300" : "bg-[#1e1f24] text-amber-300 hover:bg-zinc-800"}`}
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* Quick stats indicators */}
+            <div className={`flex gap-2 text-xs font-black ${theme === "dark" ? "text-white" : "text-black"}`}>
+              <span className={`px-3 py-1.5 rounded-full border-2 border-black flex items-center gap-1.5 shadow-[1.5px_1.5px_0px_0px_#000] ${theme === "dark" ? "bg-[#252836]" : "bg-[#84cc16]/20"}`}>
+                🔥 {streakCount} DAY STREAK
+              </span>
+            </div>
+
+            {/* Quick Reset Settings DB Option */}
+            <button
+              id="reset-state-btn"
+              onClick={handleResetData}
+              title="Reset state data"
+              className="bg-red-50 hover:bg-red-100 text-red-600 border-2 border-red-200 hover:border-red-600 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Reset Data
+            </button>
+          </div>
+        </header>
+
+        {/* View Routing depending on Tab */}
+        <div className="flex-1 p-8">
+          
+          {/* TAB 1: PRACTICE VIEW (Chat & Interactive Graph Map) */}
+          {currentTab === "practice" && (
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+              
+              {/* Left Column: Hello Welcome Banner + Concept Chat Desk (8 cols) */}
+              <div className="xl:col-span-7 flex flex-col gap-6">
+                
+                {/* Visual Mascot Intro banner */}
+                <div className="bg-[#a2e635] text-black border-4 border-black rounded-3xl p-6 relative overflow-hidden flex items-center gap-6 shadow-[5px_5px_0px_0px_#000]">
+                  <div className="absolute right-0 bottom-[-15px] opacity-10">
+                    <BookOpen className="w-48 h-48 rotate-12" />
+                  </div>
+                  
+                  <AvatarMascot expression={mascotExpression} size="md" />
+
+                  <div className="flex-1 relative z-10">
+                    <span className="bg-black text-white px-2.5 py-1 text-[10px] font-extrabold uppercase rounded-full tracking-wider">
+                      Feynman Teaching Mode
+                    </span>
+                    <h2 className="text-2xl font-black mt-2">
+                      {activeLesson ? `Teaching: ${activeLesson.title}` : "Select a topic in the Vault!"}
+                    </h2>
+                    <p className="text-xs font-semibold text-black/80 mt-1">
+                      Sam is playing clueless. Break down the highlighted concept below in plain-English analogy to enlighten him!
+                    </p>
+                  </div>
+                              {/* Main Interactive Chat Panel */}
+                <div id="chat-workspace-card" className={`border-4 border-black rounded-3xl shadow-[5px_5px_0px_0px_#000] flex flex-col h-[520px] overflow-hidden ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+                  
+                  {/* Chat Header showing Active lesson & Badge details */}
+                  <div className={`px-6 py-4 border-b-4 border-black flex items-center justify-between ${theme === "dark" ? "bg-[#0e0f12]" : "bg-slate-50"}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 bg-green-500 rounded-full animate-ping" />
+                      <span className={`text-xs font-black uppercase tracking-wider ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                        Lesson Active Feed
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleNewTopicDiscussion}
+                        title="Start a fresh chat discussion on this topic with Sam!"
+                        className={`text-[10px] font-black uppercase px-2.5 py-1.5 rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] flex items-center gap-1.5 transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none cursor-pointer
+                          ${theme === "dark" ? "bg-[#acf847] text-black hover:bg-lime-500" : "bg-white text-black hover:bg-slate-50"}`}
+                      >
+                        <Sparkle className="w-3.5 h-3.5 text-black animate-pulse" />
+                        New topic discussion
+                      </button>
+
+                      <span className="bg-[#84cc16]/10 text-[#598c0d] font-black text-xs px-2.5 py-1 rounded-full border border-[#84cc16]">
+                        {activeLesson?.subject || "No Subject"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Message History Scrolling Container */}
+                  <div 
+                    ref={chatContainerRef}
+                    className={`flex-1 p-6 overflow-y-auto space-y-4 ${theme === "dark" ? "bg-[#101115]" : "bg-[#fbfbfb]"}`}
+                  >
+                    {activeLessonId && chatHistories[activeLessonId] ? (
+                      chatHistories[activeLessonId].map((msg) => {
+                        const isSam = msg.sender === "sam";
+                        return (
+                          <div 
+                            key={msg.id} 
+                            className={`flex gap-3 items-start ${isSam ? "justify-start" : "justify-end"}`}
+                          >
+                            {isSam && (
+                              <div className="mt-1">
+                                <AvatarMascot expression={mascotExpression} size="sm" />
+                              </div>
+                            )}
+
+                            <div className="max-w-[85%] flex flex-col gap-1">
+                              <div className={`px-4 py-3 rounded-2xl border-2 border-black font-semibold text-sm shadow-[2px_2px_0px_0px_#000] leading-relaxed
+                                ${isSam 
+                                  ? (theme === "dark" ? "bg-[#1f212c] text-slate-100 rounded-tl-none" : "bg-white text-black rounded-tl-none") 
+                                  : "bg-[#acf847] text-black rounded-tr-none"
+                                }`}
+                              >
+                                <p className="whitespace-pre-line">{msg.text}</p>
+                                
+                                {/* If message has evaluated rating and analogies, show it inline! */}
+                                {msg.evaluation && (
+                                  <div className={`mt-3 pt-3 border-t-2 p-2 flex flex-col gap-2 rounded-lg ${theme === "dark" ? "border-white/10 bg-[#2d2f3d]/50" : "border-black/15 bg-[#fefefe]/40"}`}>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-black text-white">
+                                        Analogy Box
+                                      </span>
+                                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border border-black
+                                        ${msg.evaluation.clarity === "Excellent" ? "bg-emerald-300 text-black" : "bg-amber-300 text-black"}`}
+                                      >
+                                        Clarity: {msg.evaluation.clarity}
+                                      </span>
+                                    </div>
+                                    
+                                    {msg.evaluation.analogyText && (
+                                      <p className={`text-xs italic font-medium leading-relaxed ${theme === "dark" ? "text-slate-300" : "text-slate-700"}`}>
+                                        "{msg.evaluation.analogyText}"
+                                      </p>
+                                    )}
+
+                                    {msg.evaluation.missingPoints.length > 0 && (
+                                      <div className="mt-1.5">
+                                        <p className="text-[10px] font-black uppercase text-red-500 flex items-center gap-1">
+                                          <AlertCircle className="w-3.5 h-3.5" /> Missing Bits in explanation:
+                                        </p>
+                                        <ul className={`list-disc pl-4 mt-1 text-[11px] font-bold space-y-0.5 ${theme === "dark" ? "text-gray-300" : "text-gray-650"}`}>
+                                          {msg.evaluation.missingPoints.map((pt, i) => (
+                                            <li key={i}>{pt}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-400 font-bold px-1 uppercase tracking-tight">
+                                {isSam ? "Sam" : "You"} • {msg.timestamp}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className={`h-full flex flex-col items-center justify-center p-8 text-center border-4 border-dashed rounded-2xl ${theme === "dark" ? "bg-[#101115] border-zinc-800 text-gray-400" : "bg-slate-50 border-gray-200 text-gray-550"}`}>
+                        <BookOpen className="w-12 h-12 text-gray-300 mb-2" />
+                        <p className="font-extrabold">No Lesson active right now.</p>
+                        <p className="text-xs font-bold mt-1">Visit the Vault tab with textbook chapters to initialize a Feynman quiz!</p>
+                      </div>
+                    )}
+
+                    {isEvaluating && (
+                      <div className="flex gap-3 items-start justify-start">
+                        <AvatarMascot expression="thinking" size="sm" />
+                        <div className={`px-4 py-3 rounded-2xl rounded-tl-none border-2 border-black shadow-[2px_2px_0px_0px_#000] flex items-center gap-2 ${theme === "dark" ? "bg-[#1c1d24]" : "bg-slate-100"}`}>
+                          <span className="w-2.5 h-2.5 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-2.5 h-2.5 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-2.5 h-2.5 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="text-xs text-gray-500 font-black uppercase ml-1">Sam is calculating...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Input Box with audio recorders */}
+                  <div className={`p-4 border-t-4 border-black flex items-center gap-3 ${theme === "dark" ? "bg-[#1c1d24]" : "bg-white"}`}>
+                    <button
+                      id="mic-btn"
+                      onClick={startRecording}
+                      disabled={isEvaluating}
+                      title="Explain via voice simulation"
+                      className="bg-[#acf847] hover:bg-[#84cc16] text-black border-4 border-black p-3.5 rounded-2xl shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Mic className="w-5 h-5 shrink-0" />
+                    </button>
+
+                    <div className="flex-1 relative flex items-center">
+                      <input 
+                        type="text"
+                        value={userInput}
+                        onChange={(e) => setUserInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSendMessage();
+                        }}
+                        disabled={isEvaluating || !activeLessonId}
+                        placeholder={activeLesson ? `Explain: ${activeLesson.concepts.find(c => c.id === activeConceptId)?.label || "the concept"} here...` : "Select a topic first!"}
+                        className={`w-full border-4 border-black font-bold text-xs p-4 rounded-2xl outline-none placeholder-gray-400 focus:shadow-[0_0_0_3px_#84cc16] ${theme === "dark" ? "bg-[#121318] text-white" : "bg-white text-black"}`}
+                      />
+                    </div>
+
+                    <button
+                      id="send-msg-btn"
+                      onClick={() => handleSendMessage()}
+                      disabled={!userInput.trim() || isEvaluating || !activeLessonId}
+                      className="bg-[#84cc16] hover:bg-lime-600 text-black border-4 border-black p-3.5 rounded-2xl font-bold shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2 text-xs"
+                    >
+                      <span className="hidden sm:inline font-black uppercase text-xs">Send</span>
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>       </div>
+
+              </div>
+
+              {/* Right Column: Lecture Progress Map Visual roadmap (5 cols) */}
+              <div className="xl:col-span-5 flex flex-col gap-6">
+                    {/* Visual Roadmap Card representing Mermaid concept layout */}
+                <div className={`border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000] ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+                  <h3 className={`text-lg font-black tracking-tight flex items-center gap-2 ${theme === "dark" ? "text-white" : "text-black"}`}>
+                    <BrainCircuit className="w-5 h-5 text-[#84cc16]" />
+                    Lecture Progress Map
+                  </h3>
+                  <p className={`text-xs font-bold mt-1 ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                    Click concept milestones to preview references. Green nodes are unlocked!
+                  </p>
+
+                  {/* Flow Map Visual Container */}
+                  <div className={`mt-6 border-4 border-dashed rounded-2xl p-6 flex flex-col gap-4 relative min-h-[360px] justify-center ${theme === "dark" ? "border-zinc-800 bg-[#121318]" : "border-slate-200 bg-slate-50/50"}`}>
+                    
+                    {activeLesson ? (
+                      activeLesson.concepts.map((node, index) => {
+                        const isUnlocked = node.status === "unlocked";
+                        const isActive = node.status === "active";
+                        const isSelected = activeConceptId === node.id;
+
+                        return (
+                          <div key={node.id} className="flex flex-col items-center">
+                            {/* Connection Arrow */}
+                            {index > 0 && (
+                              <div className={`h-6 w-1 my-1 ${theme === "dark" ? "bg-white/40" : "bg-black"}`} />
+                            )}
+                            
+                            {/* Concept Node */}
+                            <button
+                              id={`concept-node-${node.id}`}
+                              onClick={() => setActiveConceptId(node.id)}
+                              className={`w-full max-w-sm px-4 py-3 rounded-2xl border-4 text-left transition-all relative flex items-center justify-between cursor-pointer select-none
+                                ${isUnlocked 
+                                  ? "bg-[#acf847]/25 border-green-500 shadow-[3px_3px_0px_0px_rgba(34,197,94,1)] text-[#84cc16]" 
+                                  : isActive
+                                    ? theme === "dark"
+                                      ? "bg-[#1f212c] border-white text-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] ring-4 ring-offset-2 ring-offset-[#121318] ring-[#84cc16]"
+                                      : "bg-white border-black shadow-[4px_4px_0px_0px_#000] ring-4 ring-offset-2 ring-[#84cc16]"
+                                    : theme === "dark"
+                                      ? "bg-[#14151a] border-zinc-800 text-zinc-550"
+                                      : "bg-gray-100 border-gray-300 text-gray-400"
+                                }
+                                ${isSelected ? "scale-105" : "opacity-90"}
+                              `}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                {/* Badge state index */}
+                                <span className={`w-6 h-6 rounded-full border-2 border-black flex items-center justify-center text-xs font-black
+                                  ${isUnlocked 
+                                    ? "bg-green-500 text-black" 
+                                    : isActive
+                                      ? "bg-[#84cc16] text-black"
+                                      : "bg-gray-200 text-gray-400 border-gray-300"
+                                  }`}
+                                >
+                                  {index + 1}
+                                </span>
+
+                                <div>
+                                  <h4 className="text-xs font-black uppercase text-black">
+                                    {node.label}
+                                  </h4>
+                                  <p className="text-[10px] font-bold text-gray-500 mt-0.5 max-w-[200px] truncate">
+                                    {node.description}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                {isUnlocked ? (
+                                  <span className="bg-green-500 text-white p-1 rounded-full text-[9px] font-black uppercase border border-black">
+                                    Mastered
+                                  </span>
+                                ) : isActive ? (
+                                  <span className="bg-[#84cc16] text-black px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase animate-pulse border border-black">
+                                    Teaching
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-bold text-gray-400 uppercase">
+                                    Locked
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-center font-bold text-gray-400 text-xs">
+                        No conceptual roadmap parsed. Setup a study file!
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Active Concept Card Details in footer */}
+                  {activeConceptId && activeLesson && (
+                    <div className="mt-6 border-4 border-black rounded-2xl p-4 bg-slate-50 relative">
+                      <span className="absolute top-2 right-2 bg-black text-white px-2 py-0.5 text-[9px] font-black rounded uppercase">
+                        Reference File Text
+                      </span>
+                      {(() => {
+                        const targetNode = activeLesson.concepts.find(c => c.id === activeConceptId);
+                        return (
+                          <>
+                            <h4 className="text-xs font-black uppercase text-gray-800 flex items-center gap-1 mt-1">
+                              📖 {targetNode?.label || "Active Concept Guide"}
+                            </h4>
+                            <p className="text-xs text-slate-700 leading-relaxed font-semibold mt-2 border-l-2 border-[#84cc16] pl-3">
+                              {targetNode?.description || "Select a concept milestone node in the graph above to highlight specific key mechanisms!"}
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Progress completion stats mimicking screen 2 */}
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    <div className="bg-slate-50 border-4 border-black p-4 rounded-2xl shadow-[2px_2px_0px_0px_#000]">
+                      <span className="text-[10px] font-black text-gray-400 uppercase">Lesson Mastery</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xl font-black">{activeLesson?.progress || 0}%</span>
+                        <div className="flex-1 bg-gray-200 h-3 rounded-full border-2 border-black overflow-hidden">
+                          <div 
+                            className="bg-[#84cc16] h-full" 
+                            style={{ width: `${activeLesson?.progress || 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 border-4 border-black p-4 rounded-2xl shadow-[2px_2px_0px_0px_#000]">
+                      <span className="text-[10px] font-black text-gray-400 uppercase">Target Audience</span>
+                      <p className="text-xs font-black text-emerald-600 mt-1 uppercase flex items-center gap-1">
+                        🎓 Confused peer (Sam)
+                      </p>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Daily Goals Panel matching screen 1 Mockup */}
+                <div className="bg-white border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000]">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-black tracking-tight text-black flex items-center gap-2">
+                      <Award className="w-5 h-5 text-amber-500" />
+                      Daily Goals
+                    </h3>
+                    <span className="text-xs font-bold text-gray-500 bg-gray-100 border-2 border-black px-2 py-0.5 rounded-full">
+                      {dailyGoals.filter(g => g.completed).length}/{dailyGoals.length} completed
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {dailyGoals.map((goal) => (
+                      <div 
+                        key={goal.id} 
+                        className="flex items-center gap-3 p-3 rounded-xl border-2 border-black bg-slate-50 shadow-[1px_1px_0px_0px_#000]"
+                      >
+                        <button
+                          id={`goal-checkbox-${goal.id}`}
+                          onClick={() => {
+                            setDailyGoals(prev => prev.map(g => g.id === goal.id ? { ...g, completed: !g.completed } : g));
+                          }}
+                          className={`w-6 h-6 rounded-lg border-2 border-black flex items-center justify-center font-black text-xs transition-all cursor-pointer
+                            ${goal.completed ? "bg-[#84cc16] text-black" : "bg-white"}`}
+                        >
+                          {goal.completed && "✓"}
+                        </button>
+                        <span className={`text-xs font-bold ${goal.completed ? "line-through text-gray-400" : "text-gray-800"}`}>
+                          {goal.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 2: VAULT VIEW (Lesson database grid & textbook inputs) */}
+          {currentTab === "vault" && (
+            <div className="space-y-8">
+              
+              {/* Top Banner and upload prompt */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+                
+                {/* Master Your Exam card from layout screenshots */}
+                <div className={`border-4 border-black rounded-3xl p-8 shadow-[5px_5px_0px_0px_#000] flex flex-col justify-between ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+                  <div className="space-y-4">
+                    <div className="bg-amber-100 text-amber-800 inline-block px-3 py-1 text-xs font-black uppercase rounded-full border-2 border-black">
+                      Supercharge Feynman
+                    </div>
+                    <h2 className={`text-3xl font-black leading-none ${theme === "dark" ? "text-white" : "text-black"}`}>
+                      Master Your Exams
+                    </h2>
+                    <p className={`text-xs font-bold leading-relaxed max-w-sm ${theme === "dark" ? "text-gray-300" : "text-gray-600"}`}>
+                      Copy textbook chapters or paste notes below. Sam will ingest it, generate concept roadmaps, and quiz you step-by-step!
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <button
+                      id="import-gatsby-btn"
+                      onClick={() => {
+                        setIsNewLessonModalOpen(true);
+                        loadPredefinedMaterials("Gatsby");
+                      }}
+                      className="bg-[#84cc16]/10 text-[#598c0d] font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+                    >
+                      🧪 Use Gatsby Sample Note
+                    </button>
+                    <button
+                      id="import-mitosis-btn"
+                      onClick={() => {
+                        setIsNewLessonModalOpen(true);
+                        loadPredefinedMaterials("Mitosis");
+                      }}
+                      className="bg-amber-100 text-amber-800 font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+                    >
+                      🧬 Use Cell Mitosis Note
+                    </button>
+                  </div>
+                </div>
+
+                {/* Upload Action Drag and Drop Simulation card mimicking screenshot */}
+                <div 
+                  id="upload-lecture-card"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-4 border-black rounded-3xl p-8 shadow-[5px_5px_0px_0px_#000] transition-all flex flex-col items-center justify-center text-center cursor-pointer relative group border-dashed ${theme === "dark" ? "bg-[#181920] hover:bg-[#232530]" : "bg-white hover:bg-slate-50"}`}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept=".pdf,.docx,.doc,.txt,.md"
+                    className="hidden"
+                  />
+
+                  {isParsingFile ? (
+                    <div className="flex flex-col items-center justify-center">
+                      <RefreshCw className="w-12 h-12 text-[#84cc16] animate-spin mb-3" />
+                      <h3 className="text-lg font-black">Analyzing Textbook...</h3>
+                      <p className="text-xs text-gray-400 font-semibold mt-1">
+                        Extracting pages from document stream using backend indexers
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 bg-[#acf847] border-4 border-black rounded-full flex items-center justify-center shadow-[3px_3px_0px_0px_#000] group-hover:scale-110 transition-transform">
+                        <UploadCloud className="w-8 h-8 text-black" />
+                      </div>
+                      <h3 className={`text-lg font-black mt-4 ${theme === "dark" ? "text-white" : "text-black"}`}>Upload Study File</h3>
+                      <p className="text-xs text-gray-400 font-semibold mt-1">
+                        PDFs, Word .docx, or Text files are supported!
+                      </p>
+                      <button className="bg-emerald-50 text-[#84cc16] text-xs font-black uppercase px-4 py-2.5 rounded-full border-2 border-[#84cc16] mt-4 flex items-center gap-1.5 shadow-[1.5px_1.5px_0px_0px_#84cc16]">
+                        <Plus className="w-3.5 h-3.5" />
+                        Choose raw file
+                      </button>
+                    </>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Study library section */}
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className={`text-2xl font-black ${theme === "dark" ? "text-white" : "text-black"}`}>Study Materials</h3>
+                    <p className={`text-xs font-semibold mt-0.5 ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>Your personal library of learning milestones, summaries, and lecture slides.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-black uppercase ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                      Filter: All
+                    </span>
+                  </div>
+                </div>
+
+                {/* Card grids of lessons */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {lessons.map((lesson) => {
+                    const isCompleted = lesson.progress === 100;
+                    return (
+                      <div 
+                        key={lesson.id}
+                        className={`border-4 border-black rounded-3xl p-6 shadow-[4px_4px_0px_0px_#000] flex flex-col justify-between hover:-translate-y-1 transition-all relative ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}
+                      >
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border-2 border-black ${theme === "dark" ? "bg-[#252836] text-white" : "bg-slate-100 text-slate-800"}`}>
+                              {lesson.subject}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border border-black
+                              ${isCompleted ? "bg-[#acf847] text-black" : "bg-amber-100 text-amber-800"}`}
+                            >
+                              {lesson.status}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h4 className={`font-black text-base leading-tight ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
+                              {lesson.title}
+                            </h4>
+                            <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">
+                              ⏰ Added {lesson.dateAdded} • {lesson.concepts.length} concepts
+                              ⏰ Added {lesson.dateAdded} • {lesson.concepts.length} concepts
+                            </p>
+                          </div>
+
+                          <div className="space-y-1 pt-2">
+                            <div className="flex items-center justify-between text-[11px] font-black">
+                              <span>Mastery progress</span>
+                              <span>{lesson.progress}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2.5 rounded-full border-2 border-black overflow-hidden">
+                              <div 
+                                className="bg-[#84cc16] h-full" 
+                                style={{ width: `${lesson.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-200 flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-[#84cc16] flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5" /> Textbook Ingested
+                          </span>
+                          
+                          <button
+                            id={`open-lesson-btn-${lesson.id}`}
+                            onClick={() => {
+                              setActiveLessonId(lesson.id);
+                              setCurrentTab("practice");
+                            }}
+                            className="bg-[#84cc16] hover:bg-lime-600 text-black border-2 border-black px-3.5 py-1.5 rounded-xl font-black text-[11px] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+                          >
+                            Teach Sam →
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 3: USER PROFILE VIEW (Trained brain stats, achievements) */}
+          {currentTab === "profile" && (
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+              
+              {/* Left Column (8 cols): Mastery radial charts, Badges drawer */}
+              <div className="xl:col-span-8 space-y-8">
+                
+                {/* User Info card matching mockup */}
+                <div className={`border-4 border-black rounded-3xl p-8 shadow-[5px_5px_0px_0px_#000] flex flex-col md:flex-row items-center gap-6 ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+                  <div className="w-24 h-24 rounded-full border-4 border-black overflow-hidden bg-[#a2e635]/20 flex items-center justify-center shadow-[3px_3px_0px_0px_#000]">
+                    <span className="text-4xl text-black">🎓</span>
+                  </div>
+
+                  <div className="flex-1 space-y-2 text-center md:text-left">
+                    <div className="flex flex-wrap gap-2 items-center justify-center md:justify-start">
+                      <span className="bg-[#84cc16] text-black text-xs font-black uppercase px-2.5 py-1 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]">
+                        Master Teacher
+                      </span>
+                      <span className="bg-amber-100 text-amber-800 text-xs font-black uppercase px-2.5 py-1 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]">
+                        Science Wiz
+                      </span>
+                    </div>
+
+                    <h2 className={`text-3xl font-black ${theme === "dark" ? "text-white" : "text-black"}`}>Hey there, {userName}!</h2>
+                    <p className={`text-xs font-bold leading-relaxed ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                      Your brain is looking extra beefy today. Ready to teach Sam some new tricks?
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Profile Identity Customization card requested */}
+                <div className={`border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000] space-y-4 ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+                  <div>
+                    <h3 className={`text-lg font-black tracking-tight ${theme === "dark" ? "text-white" : "text-black"}`}>
+                      Personalize Your Identity
+                    </h3>
+                    <p className={`text-xs font-semibold ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                      What should Sam call you when you are explaining material or reviewing grades?
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className={`flex items-center gap-2 border-4 border-black px-4 py-2.5 rounded-xl flex-1 shadow-[2px_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#121318]" : "bg-slate-50"}`}>
+                      <span className="text-sm font-bold">👤</span>
+                      <input 
+                        type="text"
+                        value={userName}
+                        maxLength={25}
+                        onChange={(e) => {
+                          const val = e.target.value || "Scholar";
+                          setUserName(val);
+                          localStorage.setItem("teachsam-username", val);
+                        }}
+                        className={`bg-transparent border-none text-xs font-black w-full outline-none ${theme === "dark" ? "text-white" : "text-black"}`}
+                        placeholder="Type your nickname..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subject Mastery Panel screen 3 */}
+                <div className="bg-white border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000]">
+                  <h3 className="text-lg font-black tracking-tight text-black mb-4">
+                    Subject Mastery
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="border-4 border-black p-4 rounded-2xl bg-slate-50 relative flex items-center gap-4 shadow-[3px_3px_0px_0px_#000]">
+                      <div className="w-12 h-12 rounded-full bg-[#acf847]/40 border-2 border-black flex items-center justify-center font-bold">
+                        65%
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-black">Biology</h4>
+                        <p className="text-[10px] text-gray-400 font-bold mt-0.5">13 concepts mastered</p>
+                      </div>
+                    </div>
+
+                    <div className="border-4 border-black p-4 rounded-2xl bg-slate-50 relative flex items-center gap-4 shadow-[3px_3px_0px_0px_#000]">
+                      <div className="w-12 h-12 rounded-full bg-blue-100 border-2 border-black flex items-center justify-center font-bold">
+                        30%
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-black">Physics</h4>
+                        <p className="text-[10px] text-gray-400 font-bold mt-0.5">3 concepts mastered</p>
+                      </div>
+                    </div>
+
+                    <div className="border-4 border-black p-4 rounded-2xl bg-slate-50 relative flex items-center gap-4 shadow-[3px_3px_0px_0px_#000]">
+                      <div className="w-12 h-12 rounded-full bg-amber-100 border-2 border-black flex items-center justify-center font-bold w-12 shrink-0">
+                        0%
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-black">Economics</h4>
+                        <p className="text-[10px] text-gray-400 font-bold mt-0.5">Needs explanations</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Badges Drawer in layout mockup */}
+                <div className="bg-white border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000]">
+                  <h3 className="text-lg font-black">Recent Badges</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div className="bg-[#acf847]/10 border-4 border-[#84cc16] p-4 rounded-2xl text-center shadow-[3px_3px_0px_0px_#84cc16]">
+                      <span className="text-2xl block mb-2">💡</span>
+                      <h4 className="text-xs font-black uppercase">Analogy Master</h4>
+                      <p className="text-[9.5px] font-bold text-gray-500 mt-0.5">Unlocked 5 analogies</p>
+                    </div>
+
+                    <div className="bg-amber-50 border-4 border-amber-400 p-4 rounded-2xl text-center shadow-[3px_3px_0px_0px_#fbbf24]">
+                      <span className="text-2xl block mb-2">🔥</span>
+                      <h4 className="text-xs font-black uppercase">5 Day Explainer</h4>
+                      <p className="text-[9.5px] font-bold text-gray-500 mt-0.5">Continuous daily active teaching</p>
+                    </div>
+
+                    <div className="bg-purple-100/30 border-4 border-purple-400 p-4 rounded-2xl text-center shadow-[3px_3px_0px_0px_#c084fc]">
+                      <span className="text-2xl block mb-2">🧠</span>
+                      <h4 className="text-xs font-black uppercase">Pure Sync</h4>
+                      <p className="text-[9.5px] font-bold text-gray-500 mt-0.5">High logical clarity index</p>
+                    </div>
+
+                    <div className="bg-slate-100 border-4 border-dashed border-gray-350 p-4 rounded-2xl text-center opacity-60">
+                      <span className="text-2xl block mb-2">🔒</span>
+                      <h4 className="text-xs font-black uppercase text-gray-400">Perfect 100</h4>
+                      <p className="text-[9.5px] font-bold text-gray-400 mt-0.5">Finish biology sequence</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right Column (4 cols): Brain power stats matching layout */}
+              <div className="xl:col-span-4 space-y-6">
+                
+                {/* Brain Power Stats */}
+                <div className="bg-white border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000]">
+                  <h3 className="text-sm font-black tracking-tight text-gray-500 uppercase flex items-center gap-2 mb-4">
+                    <TrendingUp className="w-4 h-4 text-emerald-600" />
+                    Brain Power Stats
+                  </h3>
+
+                  <div className="space-y-4 pt-1">
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-black mb-1">
+                        <span>Creative Flow</span>
+                        <span>85/100</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-3 rounded-full border-2 border-black overflow-hidden">
+                        <div className="bg-[#84cc16] h-full" style={{ width: '85%' }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-black mb-1">
+                        <span>Logical Reach</span>
+                        <span>72/100</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-3 rounded-full border-2 border-black overflow-hidden">
+                        <div className="bg-[#84cc16] h-full" style={{ width: '72%' }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-black mb-1">
+                        <span>Memory Retention</span>
+                        <span>95/100</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-3 rounded-full border-2 border-black overflow-hidden">
+                        <div className="bg-slate-400 h-full" style={{ width: '95%' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feynman Technique instruction reminder */}
+                <div className="bg-white border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000] relative overflow-hidden">
+                  <div className="absolute right-0 top-0 opacity-5">
+                    <Clock className="w-32 h-32" />
+                  </div>
+                  <h4 className="font-black text-xs uppercase text-[#84cc16] mb-1">The Golden Rule</h4>
+                  <p className="text-xs text-gray-600 leading-relaxed font-semibold">
+                    The Feynman Technique asks you to locate areas where your analogies falter. If Sam is looking confused on the graph, it highlights exactly where you need to check standard files & textbook items. Re-read the textbooks and teach again.
+                  </p>
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+        {/* Global branding footer */}
+        <footer className="mt-auto px-8 py-6 bg-slate-100 border-t-4 border-black flex flex-col sm:flex-row items-center justify-between text-xs font-bold text-gray-500">
+          <div>
+            <span>TeachSam Study App</span>
+            <span className="mx-2">•</span>
+            <span>© 2026 TeachSam Team</span>
+          </div>
+          <div className="flex gap-4 mt-2 sm:mt-0">
+            <a href="#" className="hover:text-black">Privacy</a>
+            <a href="#" className="hover:text-black">Terms</a>
+            <a href="#" className="hover:text-black">Support</a>
+          </div>
+        </footer>
+
+      </main>
+
+      {/* New Study Material Form Modal */}
+      <AnimatePresence>
+        {isNewLessonModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white border-4 border-black rounded-3xl p-8 max-w-xl w-full shadow-[6px_6px_0px_0px_#000] relative max-h-[90vh] overflow-y-auto"
+            >
+              <button 
+                onClick={() => setIsNewLessonModalOpen(false)}
+                className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 text-black border-2 border-black p-1.5 rounded-full transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <h3 className="text-xl font-black mb-2 uppercase tracking-tight">
+                Add Study Materials to Sam
+              </h3>
+              <p className="text-xs text-gray-500 font-bold mb-6">
+                Paste textbook content or copy reference materials. Sam's brain will evaluate and break down key nodes immediately!
+              </p>
+
+              <form onSubmit={handleCreateNewLesson} className="space-y-4">
+                
+                <div>
+                  <label className="block text-xs font-black uppercase mb-1">
+                    Lesson/Chapter Title
+                  </label>
+                  <input 
+                    type="text" 
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="e.g., Photosynthesis Phase Stage 2, Cell Division Basics"
+                    className="w-full bg-white border-4 border-black p-3 rounded-xl outline-none font-bold text-xs"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black uppercase mb-1">
+                    Subject Segment
+                  </label>
+                  <input 
+                    type="text" 
+                    value={newSubject}
+                    onChange={(e) => setNewSubject(e.target.value)}
+                    placeholder="e.g., Biology, Physics, Microeconomics"
+                    className="w-full bg-white border-4 border-black p-3 rounded-xl outline-none font-bold text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black uppercase mb-1">
+                    Textbook/Lecture Transcript Contents
+                  </label>
+                  <textarea 
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    placeholder="Paste reference materials or copy notes slides here..."
+                    className="w-full bg-white border-4 border-black p-3 rounded-xl outline-none font-bold text-xs h-36 resize-none"
+                    required
+                  />
+                </div>
+
+                {formError && (
+                  <div className="bg-red-50 text-red-600 text-[11px] font-bold p-3 rounded-xl border-2 border-red-200">
+                    ⚠️ {formError}
+                  </div>
+                )}
+
+                <div className="pt-4 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewLessonModalOpen(false)}
+                    className="bg-slate-50 border-4 border-black py-2.5 px-5 rounded-xl font-bold text-xs uppercase cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isGenerating}
+                    className="bg-[#84cc16] hover:bg-lime-600 text-black border-4 border-black py-2.5 px-6 rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Generating roadmap...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-white fill-white" />
+                        Generate Study Roadmap!
+                      </>
+                    )}
+                  </button>
+                </div>
+
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Voice Transcript Simulation Overlay */}
+      <AnimatePresence>
+        {isRecording && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-white border-4 border-black rounded-3xl p-8 max-w-sm w-full shadow-[6px_6px_0px_0px_#000] text-center"
+            >
+              <h3 className="text-lg font-black uppercase mb-1 flex items-center justify-center gap-2">
+                <Mic className="w-5 h-5 text-red-500 animate-pulse" />
+                Listening Sim active
+              </h3>
+              <p className="text-xs text-gray-500 font-bold mb-6">
+                Sam is listening to your explanation! Play explaining with voice details.
+              </p>
+
+              {/* Animated Bouncing Waveforms */}
+              <div className="h-16 flex items-center justify-center gap-1 mb-6 bg-slate-50 border-4 border-black rounded-2xl p-4">
+                {recordingWaveform.map((height, i) => (
+                  <motion.div 
+                    key={i}
+                    className="w-1.5 bg-[#84cc16] border border-black rounded-full"
+                    animate={{ height: [`${height}%`, `${height * 0.4}%`, `${height}%`] }}
+                    transition={{ repeat: Infinity, duration: 0.6 + (i * 0.05) }}
+                  />
+                ))}
+              </div>
+
+              <p className="text-xl font-black">
+                00:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds}
+              </p>
+
+              <div className="mt-8 flex items-center justify-center gap-3">
+                <button
+                  onClick={cancelRecording}
+                  className="bg-red-50 hover:bg-red-100 text-red-600 border-2 border-red-200 hover:border-red-600 py-2 px-4 rounded-xl font-bold text-xs uppercase cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={stopRecordingAndSend}
+                  className="bg-[#84cc16] text-black border-4 border-black py-2.5 px-6 rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_#000] cursor-pointer"
+                >
+                  Done, Send Voice →
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Get Pro Subscription Pricing Promo Modal */}
+      <AnimatePresence>
+        {isProModalOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white border-4 border-black rounded-3xl p-8 max-w-sm w-full shadow-[6px_6px_0px_0px_#000] relative text-center"
+            >
+              <button 
+                onClick={() => setIsProModalOpen(false)}
+                className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 text-black border-2 border-black p-1.5 rounded-full transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="w-20 h-20 bg-amber-100 border-4 border-black rounded-full flex items-center justify-center mx-auto mb-4 shadow-[3px_3px_0px_0px_#000]">
+                <Sparkles className="w-10 h-10 text-amber-500 fill-amber-500 animate-spin" style={{ animationDuration: '6s' }} />
+              </div>
+
+              <h3 className="text-2xl font-black tracking-tight text-black mb-1">
+                Unbox TEACH SAM Pro!
+              </h3>
+              <p className="text-xs font-bold text-gray-500 leading-relaxed mb-6">
+                Master classrooms, unlock unlimited Gemini study notes generation, and customize Sam's avatar personality layers.
+              </p>
+
+              <div className="bg-slate-50 border-4 border-black p-6 rounded-2xl mb-6 relative">
+                <span className="absolute top-[-10px] left-1/2 -translate-x-1/2 bg-[#84cc16] border-2 border-black text-white px-3 py-0.5 text-[9px] font-black uppercase rounded-full">
+                  Lifetime Value
+                </span>
+                <p className="text-xs font-bold text-gray-400 uppercase mt-1">Supercharged Tutor pricing</p>
+                <p className="text-4xl font-black text-black mt-2">
+                  $4.99<span className="text-xs text-gray-400 font-bold">/month</span>
+                </p>
+                <p className="text-[10px] font-bold text-gray-500 mt-2">
+                  Cancel anytime. Friendly refund policy.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  alert("Thank you! Pro subscription active for testing.");
+                  setIsProModalOpen(false);
+                }}
+                className="w-full bg-[#84cc16] hover:bg-lime-600 text-black font-black text-xs uppercase py-4 rounded-xl border-4 border-black shadow-[4px_4px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                Become a Master Teacher
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+    </div>
+  );
+}
