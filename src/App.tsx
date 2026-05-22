@@ -37,7 +37,17 @@ export default function App() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [activeLessonId, setActiveLessonId] = useState<string>("");
   const [activeConceptId, setActiveConceptId] = useState<string>("");
-  const [chatHistories, setChatHistories] = useState<Record<string, Message[]>>({});
+  const [chatHistories, setChatHistories] = useState<Record<string, Message[]>>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("teachsam-chathistories");
+      try {
+        return saved ? JSON.parse(saved) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+    return {};
+  });
   const [userInput, setUserInput] = useState<string>("");
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -46,10 +56,14 @@ export default function App() {
   const [userName, setUserName] = useState<string>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("teachsam-username");
-      return saved ? saved : "David"; // Nice default mockup name fallback
+      return saved ? saved : "User"; // Default name user requested
     }
-    return "David";
+    return "User";
   });
+
+  useEffect(() => {
+    localStorage.setItem("teachsam-chathistories", JSON.stringify(chatHistories));
+  }, [chatHistories]);
 
   // Snapchat-like Streak requested (Starts at 1, resets if inactive for 48h, increments if consecutive after 24h)
   const [streakCount, setStreakCount] = useState<number>(() => {
@@ -147,17 +161,33 @@ export default function App() {
   const recordingTimerRef = useRef<any>(null);
 
   // Fetch lessons from DB on load
-  const loadLessons = async () => {
+  const loadLessons = async (preserveStates = true) => {
     try {
       const resp = await fetch("/api/lessons");
       const data = await resp.json();
       setLessons(data);
       if (data.length > 0) {
-        // Set first active
-        setActiveLessonId(data[0].id);
-        const activeNode = data[0].concepts.find((c: ConceptNode) => c.status === "active") || data[0].concepts[0];
-        if (activeNode) {
-          setActiveConceptId(activeNode.id);
+        // Retrieve and validate active lesson ID
+        const savedActiveId = localStorage.getItem("teachsam-active-lesson-id");
+        const activeId = (preserveStates && savedActiveId && data.some((l: any) => l.id === savedActiveId))
+          ? savedActiveId
+          : data[0].id;
+
+        setActiveLessonId(activeId);
+        localStorage.setItem("teachsam-active-lesson-id", activeId);
+
+        const targetLesson = data.find((l: any) => l.id === activeId);
+        if (targetLesson) {
+          const savedConceptId = localStorage.getItem("teachsam-active-concept-id");
+          const activeNode = targetLesson.concepts.find((c: ConceptNode) => c.status === "active") || targetLesson.concepts[0];
+          const conceptId = (preserveStates && savedConceptId && targetLesson.concepts.some((c: any) => c.id === savedConceptId))
+            ? savedConceptId
+            : (activeNode ? activeNode.id : "");
+
+          setActiveConceptId(conceptId);
+          if (conceptId) {
+            localStorage.setItem("teachsam-active-concept-id", conceptId);
+          }
         }
       }
     } catch (err) {
@@ -186,12 +216,10 @@ export default function App() {
   // Set initial greeting from Sam when Lesson changes or on start
   useEffect(() => {
     if (activeLessonId && !chatHistories[activeLessonId]) {
-      const targetLesson = lessons.find(l => l.id === activeLessonId);
-      const activeNode = targetLesson?.concepts.find(c => c.id === activeConceptId) || targetLesson?.concepts[0];
       const initialGreeting: Message = {
         id: `greeting-${Date.now()}`,
         sender: "sam",
-        text: `Hey ${userName}! Ready to teach me something cool today? I've been looking over your notes on "${targetLesson?.title || "Physics"}". Can you explain to me what "${activeNode?.label || "the first concept"}" is? I'm all ears! 👂🌱`,
+        text: `Hello ${userName}, what topic would you like to teach me today?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setChatHistories(prev => ({
@@ -199,7 +227,7 @@ export default function App() {
         [activeLessonId]: [initialGreeting]
       }));
     }
-  }, [activeLessonId, lessons, activeConceptId, userName]);
+  }, [activeLessonId, chatHistories, userName]);
 
   // Auto scroll chat to bottom
   useEffect(() => {
@@ -301,6 +329,14 @@ export default function App() {
       return;
     }
 
+    setUserInput(""); // Start fresh
+    setIsRecording(true);
+    setRecordingSeconds(0);
+    setMascotExpression("thinking");
+    setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 30) + 15));
+
+    const isRecordingSelf = { current: true };
+
     try {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
@@ -308,18 +344,8 @@ export default function App() {
       recognition.lang = "en-US";
 
       recognition.onstart = () => {
-        setIsRecording(true);
-        setRecordingSeconds(0);
-        setMascotExpression("thinking");
-        setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 30) + 15));
-
-        recordingTimerRef.current = setInterval(() => {
-          setRecordingSeconds(prev => prev + 1);
-          setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 50) + 10));
-        }, 1000);
+        // Voice stream started
       };
-
-      let accumulatedTranscript = "";
 
       recognition.onresult = (event: any) => {
         let interimTranscript = "";
@@ -336,7 +362,6 @@ export default function App() {
 
         const currentText = finalTranscript || interimTranscript;
         if (currentText.trim()) {
-          accumulatedTranscript = currentText;
           setUserInput(currentText);
         }
       };
@@ -349,14 +374,66 @@ export default function App() {
       };
 
       recognition.onend = () => {
-        clearInterval(recordingTimerRef.current);
-        setIsRecording(false);
+        // If the browser closed it due to quiet silence or standard timeout,
+        // and we are still internally in recording state under 10s, auto-restart!
+        if (isRecordingSelf.current) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.warn("Speech recognition restart skipped:", e);
+          }
+        }
       };
 
-      recognitionRef.current = recognition;
+      recognitionRef.current = {
+        stop: () => {
+          isRecordingSelf.current = false;
+          try {
+            recognition.stop();
+          } catch (e) {}
+        },
+        abort: () => {
+          isRecordingSelf.current = false;
+          try {
+            recognition.abort();
+          } catch (e) {}
+        }
+      };
+
       recognition.start();
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => {
+          const nextSec = prev + 1;
+          if (nextSec >= 10) {
+            clearInterval(recordingTimerRef.current);
+            setIsRecording(false);
+            isRecordingSelf.current = false;
+            try {
+              recognition.stop();
+            } catch (e) {}
+            
+            // Auto send whatever was caught
+            setTimeout(() => {
+              setUserInput(curr => {
+                if (curr.trim()) {
+                  handleSendMessage(curr);
+                } else {
+                  alert("We didn't catch any text. Please try speaking slowly near your microphone and click Done!");
+                }
+                return curr;
+              });
+            }, 600);
+            return 10;
+          }
+          return nextSec;
+        });
+        setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 50) + 10));
+      }, 1000);
+
     } catch (err) {
       console.error("Failed to boot speech parser:", err);
+      setIsRecording(false);
     }
   };
 
@@ -369,7 +446,6 @@ export default function App() {
     
     // Send whatever was recorded in userInput
     setTimeout(() => {
-      // In speech recognition, userInput is updated in state
       if (userInput.trim()) {
         handleSendMessage(userInput);
       } else {
@@ -390,13 +466,11 @@ export default function App() {
 
   const handleNewTopicDiscussion = () => {
     if (!activeLessonId) return;
-    const targetLesson = lessons.find(l => l.id === activeLessonId);
-    const activeNode = targetLesson?.concepts.find(c => c.status === "active") || targetLesson?.concepts[0];
     
     const initialGreeting: Message = {
       id: `greeting-${Date.now()}`,
       sender: "sam",
-      text: `Hey ${userName}! Ready to start a brand new topic discussion on "${targetLesson?.title || "Physics"}"? I have cleared our chat. Can you explain to me what "${activeNode?.label || "the active concept"}" is? I'm all ears! 👂🌱`,
+      text: `Hello ${userName}, what topic would you like to teach me today?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     
@@ -548,8 +622,8 @@ export default function App() {
       {/* Main Study Desk Area */}
       <main className="flex-1 flex flex-col min-h-screen overflow-y-auto">
         
-        {/* Global Action Header with search mimicking mockup */}
-        <header className={`px-8 py-4 border-b-4 border-black flex items-center justify-between sticky top-0 z-10 shadow-[0_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
+        {/* Global Action Header with search (Desktop only) */}
+        <header className={`hidden lg:flex px-8 py-4 border-b-4 border-black items-center justify-between sticky top-0 z-10 shadow-[0_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
           <div className={`flex items-center gap-4 border-4 border-black px-4 py-2 rounded-full w-96 shadow-[2px_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#121318]" : "bg-slate-100"}`}>
             <input 
               type="text" 
@@ -565,7 +639,7 @@ export default function App() {
               onClick={() => setTheme(prev => prev === "light" ? "dark" : "light")}
               title="Toggle Day/Night mode"
               className={`p-2 rounded-full border-2 border-black font-bold transition-all shadow-[2px_2px_0px_0px_#000] active:translate-x-[1.5px] active:translate-y-[1.5px] active:shadow-none cursor-pointer flex items-center justify-center
-                ${theme === "dark" ? "bg-amber-400 text-black hover:bg-amber-300" : "bg-[#1e1f24] text-amber-300 hover:bg-zinc-800"}`}
+                ${theme === "dark" ? "bg-amber-400 text-black hover:bg-amber-300" : "bg-[#1e1f24] text-amber-300 hover:bg-zinc-805"}`}
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
@@ -590,8 +664,38 @@ export default function App() {
           </div>
         </header>
 
+        {/* Mobile/Tablet Action Header */}
+        <header className={`lg:hidden px-4 md:px-8 py-3.5 border-b-4 border-black flex items-center justify-between sticky top-0 z-20 shadow-[0_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#121318]" : "bg-white"}`}>
+          <div className="flex items-center gap-2">
+            <AvatarMascot expression={mascotExpression} size="sm" />
+            <span className={`text-sm md:text-base font-black tracking-tight uppercase ${theme === "dark" ? "text-white" : "text-black"}`}>
+              Teach Sam
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className={`px-2.5 py-1 text-[10px] font-black border-2 border-black rounded-full shadow-[1.5px_1.5px_0px_0px_#000] ${theme === "dark" ? "bg-[#252836] text-white" : "bg-[#84cc16]/20 text-black"}`}>
+              🔥 {streakCount}d
+            </span>
+            <button
+              onClick={() => setTheme(prev => prev === "light" ? "dark" : "light")}
+              className={`p-1.5 rounded-full border-2 border-black font-bold transition-all shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none cursor-pointer flex items-center justify-center
+                ${theme === "dark" ? "bg-amber-400 text-black hover:bg-amber-300" : "bg-[#1e1f24] text-amber-300 hover:bg-[#1f212c]"}`}
+            >
+              {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setIsProModalOpen(true)}
+              className="bg-[#acf847] hover:bg-lime-500 text-black border-2 border-black px-2.5 py-1 rounded-xl font-black text-[10px] shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all flex items-center gap-1 cursor-pointer"
+            >
+              <Sparkles className="w-3 h-3 text-emerald-800 fill-emerald-800 animate-pulse" />
+              PRO
+            </button>
+          </div>
+        </header>
+
         {/* View Routing depending on Tab */}
-        <div className="flex-1 p-8">
+        <div className="flex-1 p-4 md:p-8 pb-24 md:pb-8">
           
           {/* TAB 1: PRACTICE VIEW (Chat & Interactive Graph Map) */}
           {currentTab === "practice" && (
@@ -632,6 +736,15 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setIsNewLessonModalOpen(true)}
+                        title="Create and ingest a brand new custom study lesson!"
+                        className="text-[10px] font-black uppercase px-2.5 py-1.5 rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] flex items-center gap-1.5 transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none bg-amber-100 text-amber-800 hover:bg-amber-200 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-amber-850" />
+                        New Lesson
+                      </button>
+
                       <button
                         onClick={handleNewTopicDiscussion}
                         title="Start a fresh chat discussion on this topic with Sam!"
@@ -733,7 +846,7 @@ export default function App() {
                           <span className="w-2.5 h-2.5 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-2.5 h-2.5 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                           <span className="w-2.5 h-2.5 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                          <span className="text-xs text-gray-500 font-black uppercase ml-1">Sam is calculating...</span>
+                          <span className="text-xs text-gray-500 font-black uppercase ml-1">Sam is Thinking...</span>
                         </div>
                       </div>
                     )}
@@ -795,78 +908,120 @@ export default function App() {
                   <div className={`mt-6 border-4 border-dashed rounded-2xl p-6 flex flex-col gap-4 relative min-h-[360px] justify-center ${theme === "dark" ? "border-zinc-800 bg-[#121318]" : "border-slate-200 bg-slate-50/50"}`}>
                     
                     {activeLesson ? (
-                      activeLesson.concepts.map((node, index) => {
-                        const isUnlocked = node.status === "unlocked";
-                        const isActive = node.status === "active";
-                        const isSelected = activeConceptId === node.id;
+                      (() => {
+                        const activeHistory = chatHistories[activeLessonId] || [];
+                        const userHasStartedLecturing = activeHistory.some(m => m.sender === "user");
 
-                        return (
-                          <div key={node.id} className="flex flex-col items-center">
-                            {/* Connection Arrow */}
-                            {index > 0 && (
-                              <div className={`h-6 w-1 my-1 ${theme === "dark" ? "bg-white/40" : "bg-black"}`} />
-                            )}
-                            
-                            {/* Concept Node */}
-                            <button
-                              id={`concept-node-${node.id}`}
-                              onClick={() => setActiveConceptId(node.id)}
-                              className={`w-full max-w-sm px-4 py-3 rounded-2xl border-4 text-left transition-all relative flex items-center justify-between cursor-pointer select-none
-                                ${isUnlocked 
-                                  ? "bg-[#acf847]/25 border-green-500 shadow-[3px_3px_0px_0px_rgba(34,197,94,1)] text-[#84cc16]" 
-                                  : isActive
-                                    ? theme === "dark"
-                                      ? "bg-[#1f212c] border-white text-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] ring-4 ring-offset-2 ring-offset-[#121318] ring-[#84cc16]"
-                                      : "bg-white border-black shadow-[4px_4px_0px_0px_#000] ring-4 ring-offset-2 ring-[#84cc16]"
-                                    : theme === "dark"
-                                      ? "bg-[#14151a] border-zinc-800 text-zinc-550"
-                                      : "bg-gray-100 border-gray-300 text-gray-400"
-                                }
-                                ${isSelected ? "scale-105" : "opacity-90"}
-                              `}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                {/* Badge state index */}
-                                <span className={`w-6 h-6 rounded-full border-2 border-black flex items-center justify-center text-xs font-black
+                        if (!userHasStartedLecturing) {
+                          return (
+                            <div className="text-center p-6 flex flex-col items-center justify-center gap-4 py-12">
+                              <div className="w-16 h-16 bg-amber-100 hover:bg-amber-200 border-4 border-black rounded-full flex items-center justify-center shadow-[3px_3px_0px_0px_#000] animate-bounce">
+                                <BrainCircuit className="w-8 h-8 text-amber-800" />
+                              </div>
+                              <h4 className={`text-sm font-black uppercase tracking-tight ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
+                                Map Pending Lecture
+                              </h4>
+                              <p className={`text-xs font-semibold max-w-xs leading-relaxed ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
+                                Start explaining this topic in the chat feed to assemble Sam's live progress map! The nodes will unlock and branch dynamically based on your spoken and written explanations.
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        // Display dynamic map based on the conversation
+                        return activeLesson.concepts.map((node, index) => {
+                          const isUnlocked = node.status === "unlocked";
+                          const isActive = node.status === "active";
+                          const isSelected = activeConceptId === node.id;
+
+                          // Extract the exact analogy Sam gave in response to unlocking or explaining this concept
+                          const relevantSamMsg = activeHistory.find(
+                            m => m.sender === "sam" && m.evaluation && (m.evaluation.unlockedConceptIds?.includes(node.id) || activeConceptId === node.id)
+                          );
+                          const conceptAnalogy = relevantSamMsg?.evaluation?.analogyText;
+
+                          return (
+                            <div key={node.id} className="flex flex-col items-center w-full">
+                              {/* Connection Arrow */}
+                              {index > 0 && (
+                                <div className={`h-6 w-1 my-1 ${theme === "dark" ? "bg-white/40" : "bg-black"}`} />
+                              )}
+                              
+                              {/* Concept Node */}
+                              <button
+                                id={`concept-node-${node.id}`}
+                                onClick={() => {
+                                  setActiveConceptId(node.id);
+                                  localStorage.setItem("teachsam-active-concept-id", node.id);
+                                }}
+                                className={`w-full max-w-sm px-4 py-3 rounded-2xl border-4 text-left transition-all relative flex flex-col gap-1.5 cursor-pointer select-none
                                   ${isUnlocked 
-                                    ? "bg-green-500 text-black" 
+                                    ? "bg-[#acf847]/20 border-green-500 shadow-[3px_3px_0px_0px_rgba(34,197,94,1)] text-[#84cc16]" 
                                     : isActive
-                                      ? "bg-[#84cc16] text-black"
-                                      : "bg-gray-200 text-gray-400 border-gray-300"
-                                  }`}
-                                >
-                                  {index + 1}
-                                </span>
+                                      ? theme === "dark"
+                                        ? "bg-[#1f212c] border-white text-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] ring-4 ring-[#84cc16]"
+                                        : "bg-white border-black shadow-[4px_4px_0px_0px_#000] ring-4 ring-[#84cc16]"
+                                      : theme === "dark"
+                                        ? "bg-[#14151a] border-zinc-800 text-zinc-650 opacity-60"
+                                        : "bg-gray-100 border-gray-300 text-gray-400 opacity-60"
+                                  }
+                                  ${isSelected ? "scale-[1.03]" : ""}
+                                `}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <div className="flex items-center gap-2.5">
+                                    {/* Badge state index */}
+                                    <span className={`w-6 h-6 rounded-full border-2 border-black flex items-center justify-center text-xs font-black
+                                      ${isUnlocked 
+                                        ? "bg-green-500 text-black" 
+                                        : isActive
+                                          ? "bg-[#84cc16] text-black"
+                                          : "bg-gray-200 text-gray-400 border-gray-300"
+                                      }`}
+                                    >
+                                      {index + 1}
+                                    </span>
 
-                                <div>
-                                  <h4 className="text-xs font-black uppercase text-black">
-                                    {node.label}
-                                  </h4>
-                                  <p className="text-[10px] font-bold text-gray-500 mt-0.5 max-w-[200px] truncate">
+                                    <div>
+                                      <h4 className={`text-xs font-black uppercase ${theme === "dark" && !isUnlocked ? "text-gray-200" : "text-black"}`}>
+                                        {node.label}
+                                      </h4>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1">
+                                    {isUnlocked ? (
+                                      <span className="bg-green-500 text-black px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase border border-black shadow-[1px_1px_0px_0px_#000]">
+                                        Mastered
+                                      </span>
+                                    ) : isActive ? (
+                                      <span className="bg-[#84cc16] text-black px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase animate-pulse border border-black shadow-[1px_1px_0px_0px_#000]">
+                                        Teaching
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tight border border-gray-200 px-1 py-0.5 rounded">
+                                        Locked
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Dynamic content based of the conversation */}
+                                {isUnlocked && conceptAnalogy ? (
+                                  <div className="text-[10px] p-2 rounded-xl bg-green-500/10 border border-green-500 border-dashed text-green-700 dark:text-green-300 mt-1">
+                                    <p className="font-extrabold uppercase text-[9px] mb-0.5">💡 Chat-Formed Analogy:</p>
+                                    <p className="italic">"{conceptAnalogy}"</p>
+                                  </div>
+                                ) : (
+                                  <p className={`text-[10px] font-bold mt-1 ${theme === "dark" ? "text-gray-400" : "text-gray-500"} truncate max-w-[280px]`}>
                                     {node.description}
                                   </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1">
-                                {isUnlocked ? (
-                                  <span className="bg-green-500 text-white p-1 rounded-full text-[9px] font-black uppercase border border-black">
-                                    Mastered
-                                  </span>
-                                ) : isActive ? (
-                                  <span className="bg-[#84cc16] text-black px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase animate-pulse border border-black">
-                                    Teaching
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] font-bold text-gray-400 uppercase">
-                                    Locked
-                                  </span>
                                 )}
-                              </div>
-                            </button>
-                          </div>
-                        );
-                      })
+                              </button>
+                            </div>
+                          );
+                        });
+                      })()
                     ) : (
                       <div className="text-center font-bold text-gray-400 text-xs">
                         No conceptual roadmap parsed. Setup a study file!
@@ -1090,7 +1245,6 @@ export default function App() {
                             </h4>
                             <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">
                               ⏰ Added {lesson.dateAdded} • {lesson.concepts.length} concepts
-                              ⏰ Added {lesson.dateAdded} • {lesson.concepts.length} concepts
                             </p>
                           </div>
 
@@ -1113,14 +1267,20 @@ export default function App() {
                             <FileText className="w-3.5 h-3.5" /> Textbook Ingested
                           </span>
                           
-                          <button
-                            id={`open-lesson-btn-${lesson.id}`}
-                            onClick={() => {
-                              setActiveLessonId(lesson.id);
-                              setCurrentTab("practice");
-                            }}
-                            className="bg-[#84cc16] hover:bg-lime-600 text-black border-2 border-black px-3.5 py-1.5 rounded-xl font-black text-[11px] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
-                          >
+                           <button
+                             id={`open-lesson-btn-${lesson.id}`}
+                             onClick={() => {
+                               setActiveLessonId(lesson.id);
+                               localStorage.setItem("teachsam-active-lesson-id", lesson.id);
+                               const targetNote = lesson.concepts.find(c => c.status === "active") || lesson.concepts[0];
+                               if (targetNote) {
+                                 setActiveConceptId(targetNote.id);
+                                 localStorage.setItem("teachsam-active-concept-id", targetNote.id);
+                               }
+                               setCurrentTab("practice");
+                             }}
+                             className="bg-[#84cc16] hover:bg-lime-600 text-black border-2 border-black px-3.5 py-1.5 rounded-xl font-black text-[11px] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+                           >
                             Teach Sam →
                           </button>
                         </div>
@@ -1182,9 +1342,15 @@ export default function App() {
                         value={userName}
                         maxLength={25}
                         onChange={(e) => {
-                          const val = e.target.value || "Scholar";
+                          const val = e.target.value;
                           setUserName(val);
                           localStorage.setItem("teachsam-username", val);
+                        }}
+                        onBlur={() => {
+                          if (!userName.trim()) {
+                            setUserName("User");
+                            localStorage.setItem("teachsam-username", "User");
+                          }
                         }}
                         className={`bg-transparent border-none text-xs font-black w-full outline-none ${theme === "dark" ? "text-white" : "text-black"}`}
                         placeholder="Type your nickname..."
@@ -1340,6 +1506,33 @@ export default function App() {
         </footer>
 
       </main>
+
+      {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
+      <div className={`lg:hidden fixed bottom-5 left-1/2 -translate-x-1/2 w-[92%] max-w-sm h-14 rounded-2xl border-4 border-black flex items-center justify-around z-30 shadow-[4px_4px_0px_0px_#000] select-none ${theme === "dark" ? "bg-[#121318]" : "bg-white"}`}>
+        <button
+          onClick={() => setCurrentTab("practice")}
+          className={`flex flex-col items-center justify-center w-24 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "practice" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[9px]" : "text-gray-400 font-bold text-[9px]"}`}
+        >
+          <GraduationCap className="w-4 h-4" />
+          <span className="text-[8px] uppercase tracking-wider mt-0.5">Practice</span>
+        </button>
+
+        <button
+          onClick={() => setCurrentTab("vault")}
+          className={`flex flex-col items-center justify-center w-24 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "vault" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[9px]" : "text-gray-400 font-bold text-[9px]"}`}
+        >
+          <Library className="w-4 h-4" />
+          <span className="text-[8px] uppercase tracking-wider mt-0.5">Vault</span>
+        </button>
+
+        <button
+          onClick={() => setCurrentTab("profile")}
+          className={`flex flex-col items-center justify-center w-24 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "profile" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[9px]" : "text-gray-400 font-bold text-[9px]"}`}
+        >
+          <User className="w-4 h-4" />
+          <span className="text-[8px] uppercase tracking-wider mt-0.5">Profile</span>
+        </button>
+      </div>
 
       {/* New Study Material Form Modal */}
       <AnimatePresence>

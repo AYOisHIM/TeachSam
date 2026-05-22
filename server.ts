@@ -213,7 +213,7 @@ app.post("/api/lessons/reset", (req, res) => {
 
 // 4. Evaluate explanation
 app.post("/api/chat/evaluate", async (req, res) => {
-  const { lessonId, chatHistory, latestMessage, activeConceptId, userName = "Scholar" } = req.body;
+  const { lessonId, chatHistory, latestMessage, activeConceptId, userName = "User" } = req.body;
 
   const currentLesson = userLessons.find(l => l.id === lessonId);
   if (!currentLesson) {

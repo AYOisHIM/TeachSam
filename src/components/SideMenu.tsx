@@ -20,9 +20,9 @@ export default function SideMenu({ currentTab, onTabChange, expression, onTrigge
   const isDark = theme === "dark";
 
   return (
-    <aside className={`w-64 border-r-4 border-black flex flex-col h-screen sticky top-0 shrink-0 select-none ${isDark ? "bg-[#181920] text-white" : "bg-white text-black"}`}>
+    <aside className={`hidden lg:flex w-64 border-r-4 border-black flex-col h-screen sticky top-0 shrink-0 select-none ${isDark ? "bg-[#121318] text-white" : "bg-white text-black"}`}>
       {/* Brand Header */}
-      <div className={`p-6 border-b-4 border-black flex flex-col items-center justify-center gap-2 ${isDark ? "bg-[#0e0f12]" : "bg-[#f9f9fa]"}`}>
+      <div className={`p-6 border-b-4 border-black flex flex-col items-center justify-center gap-2 ${isDark ? "bg-[#181a22]" : "bg-[#fcfcfd]"}`}>
         <AvatarMascot expression={expression} size="md" />
         <div className="text-center mt-1">
           <h1 className={`text-2xl font-black tracking-tight flex items-center gap-1.5 justify-center ${isDark ? "text-white" : "text-black"}`}>
