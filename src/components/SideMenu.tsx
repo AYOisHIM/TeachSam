@@ -1,10 +1,10 @@
 import React from "react";
-import { GraduationCap, Library, User, Sparkles, BookOpen } from "lucide-react";
+import { GraduationCap, Library, User, Sparkles, BookOpen, ClipboardCheck } from "lucide-react";
 import AvatarMascot from "./AvatarMascot";
 
 interface SideMenuProps {
-  currentTab: "practice" | "vault" | "profile";
-  onTabChange: (tab: "practice" | "vault" | "profile") => void;
+  currentTab: "practice" | "vault" | "tests" | "profile";
+  onTabChange: (tab: "practice" | "vault" | "tests" | "profile") => void;
   expression: "neutral" | "confused" | "amazed" | "thinking" | "happy";
   onTriggerPro: () => void;
   theme?: "light" | "dark";
@@ -14,6 +14,7 @@ export default function SideMenu({ currentTab, onTabChange, expression, onTrigge
   const tabs = [
     { id: "practice", label: "Practice", icon: GraduationCap },
     { id: "vault", label: "Vault", icon: Library },
+    { id: "tests", label: "Tests", icon: ClipboardCheck },
     { id: "profile", label: "Profile", icon: User },
   ] as const;
 
