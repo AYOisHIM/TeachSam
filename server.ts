@@ -249,8 +249,10 @@ app.post("/api/chat/evaluate", async (req, res) => {
 
     // --- Dynamic Topic Intent Detection & On-The-Fly Roadmap Generation ---
     let isNewTopicRequest = false;
+    let isChitChatRequest = false;
     let newTopicTitle = "";
     let newTopicSubject = "";
+    let chitChatResponse = "";
 
     const isBlankLesson = currentLesson?.id.startsWith("blank-") || currentLesson?.title === "New Topic Study";
 
@@ -277,20 +279,20 @@ app.post("/api/chat/evaluate", async (req, res) => {
       }
     }
 
-    if (!isNewTopicRequest && process.env.GEMINI_API_KEY) {
+    if (process.env.GEMINI_API_KEY) {
       try {
         const classificationResponse = await ai.models.generateContent({
           model: "gemini-3.5-flash",
-          contents: `The student user named "${userName}" is in a study session.
-Current lesson: "${currentLesson?.title || 'Unknown'}" (Subject: "${currentLesson?.subject || 'Unknown'}")
-Current specific subconcept to be studied or explained: "${activeConcept?.label || 'Unknown'}".
+          contents: `The student user named "${userName}" is studying in a collaborative learning session with Sam (an enthusiastic, friendly, but slightly clueless classmate peer).
+Current lesson topic: "${currentLesson?.title || 'Unknown'}" (Subject: "${currentLesson?.subject || 'Unknown'}")
+Current specific Concept they are currently aiming to explain/teach: "${activeConcept?.label || 'Unknown'}".
 
-The user's latest typed message is: "${latestMessage}"
+The user's latest typed/spoken message is: "${latestMessage}"
 
-Analyze if the user is explicitly introducing, requesting, or responding with a COMPLETELY new, different study topic or subject area (e.g., they typed "object oriented programming", "let's switch to python", "I want to teach you World War 2", or simply named a new topic like "gravity", "linear algebra" or "mitosis" in response to general onboarding questions like "what would you like to teach me today?").
-
-If they are discussing, explaining, or answering questions about the active concept ("${activeConcept?.label}"), or if they are just greeting ("hello", "hey"), "isNewTopic" MUST be false.
-Only set "isNewTopic" to true if there is a distinct new topic name mentioned that they want to study/teach instead of the current lesson "${currentLesson?.title}".
+Analyze the user's message and classify their core intent:
+1. "newTopic" - User is explicitly introducing, requesting, or asking to switch to learning/teaching a brand new study topic or subject area (e.g. "let's study python", "let's learn photosynthesis", "I want to teach you gravity", "let's switch to biology"). Only return this if they specify a clear topic/theme they want to learn.
+2. "chitchat" - User's message is a greeting (e.g., "Hello Sam", "hi buddy", "hey!"), a general personal inquiry (e.g., "What is your name?", "who are you?", "how are you?", "can you hear me?"), or simple banter that is NOT an attempt to explain the course topic "${activeConcept?.label}".
+3. "teaching" - User is actively trying to teach, define, explain, or check their understanding of the active concept "${activeConcept?.label}".
 
 Respond strictly with a JSON object.`,
           config: {
@@ -298,31 +300,63 @@ Respond strictly with a JSON object.`,
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                isNewTopic: { type: Type.BOOLEAN, description: "True if the user wants to start/teach/switch to a brand-new topic of study" },
-                topicTitle: { type: Type.STRING, description: "The title of the new topic (e.g., 'Object-Oriented Programming')" },
-                subject: { type: Type.STRING, description: "General category subject segment (e.g., 'Computer Science', 'Physics', 'History', 'Biology')" }
+                intent: {
+                  type: Type.STRING,
+                  description: "Must be 'newTopic', 'chitchat', or 'teaching'"
+                },
+                topicTitle: {
+                  type: Type.STRING,
+                  description: "For 'newTopic' only: the title of the new topic (e.g., 'Object-Oriented Programming')"
+                },
+                subject: {
+                  type: Type.STRING,
+                  description: "For 'newTopic' only: Subject area (e.g., 'Computer Science', 'Physics', 'History', 'Biology')"
+                },
+                replyText: {
+                  type: Type.STRING,
+                  description: "For 'chitchat' only: A casual, friendly reply from Sam in his enthusiastic, informal classmate student persona. He answers persona questions (e.g. name is Sam, he is the user's peer classmate, clueless but eager to learn!). Direct them nicely back to teaching him the active concept: '${activeConcept?.label}'."
+                }
               },
-              required: ["isNewTopic"]
+              required: ["intent"]
             }
           }
         });
 
         const parsedClass = JSON.parse(classificationResponse.text || "{}");
-        if (parsedClass.isNewTopic && parsedClass.topicTitle) {
+        if (parsedClass.intent === "newTopic" && parsedClass.topicTitle) {
           isNewTopicRequest = true;
           newTopicTitle = parsedClass.topicTitle;
           newTopicSubject = parsedClass.subject || "General Study";
+        } else if (parsedClass.intent === "chitchat") {
+          isChitChatRequest = true;
+          chitChatResponse = parsedClass.replyText || `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 How are you doing? Whenever you are ready, could you teach me more about **${activeConcept?.label || 'the concept'}**? My classmate notes are still empty!`;
         }
       } catch (err) {
-        console.error("Error during dynamic topic check:", err);
+        console.error("Error during dynamic intent check:", err);
       }
-    } else {
-      // Robust local heuristic check when offline or in fallback
+    }
+
+    // Fallback classification if Gemini classification was not completed or key absent
+    if (!isNewTopicRequest && !isChitChatRequest) {
       const inputLower = latestMessage.toLowerCase().trim();
-      const isIntroWord = inputLower.length < 4 || inputLower.includes("hello") || inputLower.includes("hey") || inputLower.includes("hi") || inputLower === "yes" || inputLower === "no";
+      const chitchatPhrases = [
+        "hello", "hi", "hey", "how are you", "your name", "who are you", "what is your name", 
+        "whats your name", "nice to meet", "can you hear me", "good morning", "good afternoon", 
+        "good evening", "howdy", "sup", "what's up", "whats up", "yo sam"
+      ];
+      const isGreetingOrChitchat = inputLower.length < 4 || chitchatPhrases.some(p => inputLower.includes(p)) || inputLower === "yes" || inputLower === "no";
       
-      if (!isIntroWord && inputLower.length > 3 && inputLower.length < 60) {
-        // Heuristic list of popular non-biology terms
+      if (isGreetingOrChitchat) {
+        isChitChatRequest = true;
+        if (inputLower.includes("name") || inputLower.includes("who are you")) {
+          chitChatResponse = `Hey! I'm **Sam**, your classmates buddy! 🎓 My job is to take notes and learn from you. Whenever you are ready, teach me about **${activeConcept?.label || 'this concept'}**!`;
+        } else if (inputLower.includes("how are you")) {
+          chitChatResponse = `I'm doing awesome, ${userName}! Eager and ready to learn. 😄 Are you ready to teach me about **${activeConcept?.label || 'the concept'}**?`;
+        } else {
+          chitChatResponse = `Hey ${userName}! Glad to see you! 👋 My classmate ears are wide open. How would you explain **${activeConcept?.label || 'this concept'}** to me in simple terms?`;
+        }
+      } else if (inputLower.length > 3 && inputLower.length < 60) {
+        // Fallback newTopic check
         const coding = ["programming", "code", "python", "javascript", "react", "c++", "java", "oop", "computer"];
         const physics = ["quantum", "physics", "gravity", "force", "molecule", "einstein", "atom"];
         const lit = ["gatsby", "book", "noble", "novel", "literature", "shakespeare"];
@@ -344,7 +378,6 @@ Respond strictly with a JSON object.`,
           matchedType = "Microeconomics 101";
           matchedSubject = "Economics";
         } else {
-          // General capitalized words can be treated as a new custom topic
           const words = latestMessage.split(" ").filter(w => w.length > 0);
           if (words.length >= 1 && words.length <= 4) {
             matchedType = latestMessage.replace(/[?.]/g, "").trim();
@@ -495,6 +528,22 @@ Break down this summary into exactly 3 to 4 sequential concept path nodes for a 
       });
     }
 
+    // Handle conversational greetings and casual chitchat
+    if (isChitChatRequest && chitChatResponse) {
+      return res.json({
+        id: `sam-${Date.now()}`,
+        sender: "sam",
+        text: chitChatResponse,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        evaluation: {
+          clarity: "Direct Answer",
+          missingPoints: [],
+          feedback: "Casual greeting / conversation",
+          unlockedConceptIds: []
+        }
+      });
+    }
+
     // --- Standard Active Concept Explanation Evaluation ---
     // Generate prompt with context
     const chatHistoryFormatted = chatHistory
@@ -537,8 +586,54 @@ Now evaluate the student's latest explanation:
 Chat overview so far:
 ${chatHistoryFormatted}`;
 
-    if (!process.env.GEMINI_API_KEY) {
-      // Simulate locally if no apiKey configured - Dynamically adapt to the actual active concept/subject!
+    let parsedSamResponse: any = null;
+
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: promptSystem,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                text: {
+                  type: Type.STRING,
+                  description: "Sam's casual, enthusiastic student-styled comment or confused follow-up question. Make it highly engaging, empathetic, and full of character."
+                },
+                clarity: {
+                  type: Type.STRING,
+                  description: "Must be: 'Excellent' (no gaps), 'Good' (mostly accurate but minor missed items), 'Struggling' (significant misunderstandings or massive omissions) or 'Direct Answer' (student isn't teaching, they are asking you to tell them the definition)."
+                },
+                missingPoints: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "List of actual scientific facts from the text that the student left out in their explanation."
+                },
+                unlockedConceptIds: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "A list of IDs from the lesson concepts list that the student successfully taught. Usually, it should be the activeConceptId if they did fine!"
+                },
+                analogyText: {
+                  type: Type.STRING,
+                  description: "A friendly verbal explanation of a simple concrete analogy (e.g. using kitchenware, sports, or games) to map the difficult concept."
+                }
+              },
+              required: ["text", "clarity", "missingPoints", "unlockedConceptIds", "analogyText"]
+            }
+          }
+        });
+
+        parsedSamResponse = JSON.parse(response.text || "{}");
+      } catch (err) {
+        console.error("Gemini model execution failed, falling back to local simulation:", err);
+      }
+    }
+
+    if (!parsedSamResponse) {
+      // Simulate locally if no apiKey configured or if Gemini API call failed - Dynamically adapt to the actual active concept/subject!
       let mockRes = {
         text: `Hey ${userName}! That explanation of "${activeConcept?.label || 'this concept'}" is super interesting! But wait, how does this actually work under the hood? I want to make sure I really get it!`,
         clarity: "Good",
@@ -625,6 +720,33 @@ ${chatHistoryFormatted}`;
             analogyText: "Analogy: It is like water levels in two connected tanks! High levels will naturally spill over and flow down until both tanks find the exact same height equilibrium."
           };
         }
+      } else if (currentLesson.id === "cs-oop-basics" || currentLesson.id.includes("comp") || currentLesson.id.includes("dynamic") || currentLesson.title.toLowerCase().includes("class") || currentLesson.title.toLowerCase().includes("programming") || currentLesson.title.toLowerCase().includes("oop") || currentLesson.title.toLowerCase().includes("computer science")) {
+        // Fallback for computer science / oop / classes and objects
+        if (activeConceptId === "classes-objects" || activeConceptId === "classes" || activeConceptId.includes("class") || activeConceptId.includes("object")) {
+          mockRes = {
+            text: `Aha, ${userName}! So a class is the parent encasing (the blueprint) that has code, and objects are the instances created from it! But wait, does the class itself hold the actual live values, or does it just template them of what they should hold?`,
+            clarity: "Excellent",
+            missingPoints: [],
+            unlockedConceptIds: [activeConceptId],
+            analogyText: `Analogy: Think of a class like a cookie cutter, and objects as the actual individual cookies baked with it! The cutter defines the shape, but each cookie can have different toppings!`
+          };
+        } else if (activeConceptId === "data-hiding" || activeConceptId.includes("hiding") || activeConceptId.includes("encaps")) {
+          mockRes = {
+            text: `Oh! So data hiding or encapsulation puts locks on variables so they aren't directly messed with? How do other parts of code get or set values then? Do they need getter and setter keys?`,
+            clarity: "Good",
+            missingPoints: ["Data hiding restricts direct variable access and exposes values through controlled helper methods."],
+            unlockedConceptIds: [activeConceptId],
+            analogyText: `Analogy: It is like an ATM machine! You cannot reach into the safe to grab bills directly; instead, you must use a secure public interface (withdraw method) to access your cash safely.`
+          };
+        } else {
+          mockRes = {
+            text: `Wait, so adaptation/inheritance is how child classes extend parent blueprints? What happens if a child wants to do a parent action in its own unique way?`,
+            clarity: "Good",
+            missingPoints: ["Inheritance permits code reuse, while polymorphism lets children override parent methods with custom behavior."],
+            unlockedConceptIds: [activeConceptId],
+            analogyText: `Analogy: Think of a phone blueprint! A smartphone inherits dialing keys and speakers from a landline, but adds visual screen touch apps of its own!`
+          };
+        }
       } else {
         // Fallback for custom uploads (so Sam speaks exactly about their topic)
         mockRes = {
@@ -636,58 +758,14 @@ ${chatHistoryFormatted}`;
         };
       }
 
-      return res.json({
-        id: `sam-${Date.now()}`,
-        sender: "sam",
+      parsedSamResponse = {
         text: mockRes.text,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        evaluation: {
-          clarity: mockRes.clarity,
-          missingPoints: mockRes.missingPoints,
-          feedback: "Dynamic topic simulation loaded successfully!",
-          unlockedConceptIds: mockRes.unlockedConceptIds,
-          analogyText: mockRes.analogyText
-        }
-      });
+        clarity: mockRes.clarity,
+        missingPoints: mockRes.missingPoints,
+        unlockedConceptIds: mockRes.unlockedConceptIds,
+        analogyText: mockRes.analogyText
+      };
     }
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: promptSystem,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            text: {
-              type: Type.STRING,
-              description: "Sam's casual, enthusiastic student-styled comment or confused follow-up question. Make it highly engaging, empathetic, and full of character."
-            },
-            clarity: {
-              type: Type.STRING,
-              description: "Must be: 'Excellent' (no gaps), 'Good' (mostly accurate but minor missed items), 'Struggling' (significant misunderstandings or massive omissions) or 'Direct Answer' (student isn't teaching, they are asking you to tell them the definition)."
-            },
-            missingPoints: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "List of actual scientific facts from the text that the student left out in their explanation."
-            },
-            unlockedConceptIds: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "A list of IDs from the lesson concepts list that the student successfully taught. Usually, it should be the activeConceptId if they did fine!"
-            },
-            analogyText: {
-              type: Type.STRING,
-              description: "A friendly verbal explanation of a simple concrete analogy (e.g. using kitchenware, sports, or games) to map the difficult concept."
-            }
-          },
-          required: ["text", "clarity", "missingPoints", "unlockedConceptIds", "analogyText"]
-        }
-      }
-    });
-
-    const parsedSamResponse = JSON.parse(response.text || "{}");
 
     // Dynamically update the lesson state in our simple state memory store!
     if (parsedSamResponse.unlockedConceptIds && parsedSamResponse.unlockedConceptIds.length > 0) {
@@ -791,8 +869,17 @@ app.post("/api/quiz/generate", async (req, res) => {
   let sourceText = "";
   let sourceTitle = "General Knowledge";
   
-  if (contentType === "lesson" && lessonId) {
-    const lesson = userLessons.find(l => l.id === lessonId);
+  if (contentType === "lesson") {
+    let lesson = null;
+    if (lessonId) {
+      lesson = userLessons.find(l => l.id === lessonId);
+      if (!lesson) {
+        lesson = userLessons.find(l => l.title.toLowerCase().includes(lessonId.toLowerCase()) || l.id.toLowerCase().includes(lessonId.toLowerCase()));
+      }
+    }
+    if (!lesson && userLessons.length > 0) {
+      lesson = userLessons[0];
+    }
     if (lesson) {
       sourceText = lesson.content;
       sourceTitle = lesson.title;
@@ -806,7 +893,12 @@ app.post("/api/quiz/generate", async (req, res) => {
   }
   
   if (!sourceText.trim()) {
-    sourceText = "Photosynthesis basics, light-dependent reactions water splitting, ATP synthesis, Calvin cycle carbon fixation.";
+    if (userLessons.length > 0) {
+      sourceText = userLessons[0].content;
+      sourceTitle = userLessons[0].title;
+    } else {
+      sourceText = "Photosynthesis basics, light-dependent reactions water splitting, ATP synthesis, Calvin cycle carbon fixation.";
+    }
   }
   
   try {

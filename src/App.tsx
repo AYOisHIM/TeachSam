@@ -145,6 +145,7 @@ export default function App() {
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
   const [recordingWaveform, setRecordingWaveform] = useState<number[]>([]);
+  const [expandedAnalogies, setExpandedAnalogies] = useState<Record<string, boolean>>({});
 
   // New Lesson form state
   const [newTitle, setNewTitle] = useState<string>("");
@@ -220,19 +221,23 @@ export default function App() {
 
   // Set initial greeting from Sam when Lesson changes or on start
   useEffect(() => {
-    if (activeLessonId && !chatHistories[activeLessonId]) {
+    if (!activeLessonId) return;
+
+    setChatHistories(prev => {
+      if (prev[activeLessonId]) return prev; // Do nothing if already exists
+
       const initialGreeting: Message = {
         id: `greeting-${Date.now()}`,
         sender: "sam",
         text: `Hello ${userName}, what topic would you like to teach me today?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setChatHistories(prev => ({
+      return {
         ...prev,
         [activeLessonId]: [initialGreeting]
-      }));
-    }
-  }, [activeLessonId, chatHistories, userName]);
+      };
+    });
+  }, [activeLessonId, userName]);
 
   // Auto scroll chat to bottom
   useEffect(() => {
@@ -347,6 +352,11 @@ export default function App() {
           userName // Pass custom username
         })
       });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server responded with status ${response.status}`);
+      }
 
       const evaluatedSamMsg: any = await response.json();
       
@@ -510,31 +520,7 @@ export default function App() {
       recognition.start();
 
       recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds(prev => {
-          const nextSec = prev + 1;
-          if (nextSec >= 10) {
-            clearInterval(recordingTimerRef.current);
-            setIsRecording(false);
-            isRecordingSelf.current = false;
-            try {
-              recognition.stop();
-            } catch (e) {}
-            
-            // Auto send whatever was caught
-            setTimeout(() => {
-              setUserInput(curr => {
-                if (curr.trim()) {
-                  handleSendMessage(curr);
-                } else {
-                  alert("We didn't catch any text. Please try speaking slowly near your microphone and click Done!");
-                }
-                return curr;
-              });
-            }, 600);
-            return 10;
-          }
-          return nextSec;
-        });
+        setRecordingSeconds(prev => prev + 1);
         setRecordingWaveform(Array.from({ length: 15 }, () => Math.floor(Math.random() * 50) + 10));
       }, 1000);
 
@@ -803,7 +789,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
   };
 
   return (
-    <div className={`flex min-h-screen select-none font-sans overflow-x-hidden ${theme === "dark" ? "bg-[#0e0f12] text-slate-100" : "bg-[#f9f9fa] text-black"}`}>
+    <div className={`flex min-h-screen font-sans overflow-x-hidden ${theme === "dark" ? "bg-[#0e0f12] text-slate-100" : "bg-[#f9f9fa] text-black"}`}>
       
       {/* Neo-brutalist custom Sidebar Menu component */}
       <SideMenu 
@@ -1003,36 +989,53 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                               >
                                 <p className="whitespace-pre-line">{msg.text}</p>
                                 
-                                {/* If message has evaluated rating and analogies, show it inline! */}
-                                {msg.evaluation && (
-                                  <div className={`mt-3 pt-3 border-t-2 p-2 flex flex-col gap-2 rounded-lg ${theme === "dark" ? "border-white/10 bg-[#2d2f3d]/50" : "border-black/15 bg-[#fefefe]/40"}`}>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-black text-white">
-                                        Analogy Box
-                                      </span>
-                                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border border-black
-                                        ${msg.evaluation.clarity === "Excellent" ? "bg-emerald-300 text-black" : "bg-amber-300 text-black"}`}
-                                      >
-                                        Clarity: {msg.evaluation.clarity}
-                                      </span>
-                                    </div>
-                                    
-                                    {msg.evaluation.analogyText && (
-                                      <p className={`text-xs italic font-medium leading-relaxed ${theme === "dark" ? "text-slate-300" : "text-slate-700"}`}>
-                                        "{msg.evaluation.analogyText}"
-                                      </p>
-                                    )}
+                                {/* If message has evaluated rating and analogies, show it only when toggled! */}
+                                {msg.evaluation && (msg.evaluation.analogyText || (msg.evaluation.missingPoints && msg.evaluation.missingPoints.length > 0)) && (
+                                  <div className="mt-2 text-left">
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedAnalogies(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-black font-black text-[9px] uppercase shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer select-none
+                                        ${expandedAnalogies[msg.id]
+                                          ? "bg-slate-200 text-black border-black" 
+                                          : theme === "dark" ? "bg-amber-400 text-black hover:bg-amber-300" : "bg-amber-100 text-amber-950 hover:bg-amber-200 border-black"
+                                        }`}
+                                    >
+                                      <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-300 animate-pulse shrink-0" />
+                                      {expandedAnalogies[msg.id] ? "Hide Sam's Analogy" : "💡 Need an Analogy?"}
+                                    </button>
 
-                                    {msg.evaluation.missingPoints.length > 0 && (
-                                      <div className="mt-1.5">
-                                        <p className="text-[10px] font-black uppercase text-red-500 flex items-center gap-1">
-                                          <AlertCircle className="w-3.5 h-3.5" /> Missing Bits in explanation:
-                                        </p>
-                                        <ul className={`list-disc pl-4 mt-1 text-[11px] font-bold space-y-0.5 ${theme === "dark" ? "text-gray-300" : "text-gray-650"}`}>
-                                          {msg.evaluation.missingPoints.map((pt, i) => (
-                                            <li key={i}>{pt}</li>
-                                          ))}
-                                        </ul>
+                                    {expandedAnalogies[msg.id] && (
+                                      <div className={`mt-3 pt-3 border-t-2 p-2 flex flex-col gap-2 rounded-lg ${theme === "dark" ? "border-white/10 bg-[#2d2f3d]/50" : "border-black/15 bg-[#fefefe]/40"}`}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-black text-white">
+                                            Analogy Box
+                                          </span>
+                                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border border-black
+                                            ${msg.evaluation.clarity === "Excellent" ? "bg-emerald-300 text-black" : "bg-amber-300 text-black"}`}
+                                          >
+                                            Clarity: {msg.evaluation.clarity}
+                                          </span>
+                                        </div>
+                                        
+                                        {msg.evaluation.analogyText && (
+                                          <p className={`text-xs italic font-medium leading-relaxed ${theme === "dark" ? "text-slate-300" : "text-slate-700"}`}>
+                                            "{msg.evaluation.analogyText}"
+                                          </p>
+                                        )}
+
+                                        {msg.evaluation.missingPoints && msg.evaluation.missingPoints.length > 0 && (
+                                          <div className="mt-1.5">
+                                            <p className="text-[10px] font-black uppercase text-red-500 flex items-center gap-1">
+                                              <AlertCircle className="w-3.5 h-3.5" /> Missing Bits in explanation:
+                                            </p>
+                                            <ul className={`list-disc pl-4 mt-1 text-[11px] font-bold space-y-0.5 ${theme === "dark" ? "text-gray-300" : "text-gray-650"}`}>
+                                              {msg.evaluation.missingPoints.map((pt, i) => (
+                                                <li key={i}>{pt}</li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -1571,6 +1574,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
               lessons={lessons} 
               theme={theme} 
               userName={userName} 
+              activeLessonId={activeLessonId}
             />
           )}
 
@@ -1764,6 +1768,55 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                       </div>
                       <div className="w-full bg-slate-100 h-3 rounded-full border-2 border-black overflow-hidden">
                         <div className="bg-slate-400 h-full" style={{ width: '95%' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Companion Avatars Boutique (Other Avatars - Coming Soon Showcases) */}
+                <div className="bg-white border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000] flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-black tracking-tight text-gray-500 uppercase flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500 fill-amber-300 animate-pulse" />
+                      Companion Buddies
+                    </h3>
+                    <span className="bg-purple-100 text-purple-800 text-[9px] font-black uppercase px-2 py-0.5 rounded border-2 border-black">
+                      Expansion pack
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] font-semibold text-gray-500 leading-relaxed -mt-1">
+                    Expand your classrooms! Meet Sam's peers currently finishing training. You'll be able to lecture and examine them simultaneously soon:
+                  </p>
+
+                  <div className="space-y-3">
+                    {/* Character 1: Samantha */}
+                    <div className="border-4 border-black p-3.5 rounded-2xl bg-indigo-50/30 flex items-center gap-3.5 relative overflow-hidden group">
+                      <div className="absolute top-1.5 right-1.5 bg-black text-white text-[8px] font-black uppercase px-1.5 py-0.5 rounded truncate">
+                        Coming Soon
+                      </div>
+                      <div className="w-12 h-12 rounded-full border-2 border-black overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                        <span className="text-2xl">👩‍🔬</span>
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-black uppercase text-black">Samantha</h4>
+                        <p className="text-[10px] font-black text-[#84cc16] mt-0.5 uppercase">Science Literature Major</p>
+                        <p className="text-[9.5px] text-gray-450 font-semibold truncate">Specializes in Biology and Quantum Physics</p>
+                      </div>
+                    </div>
+
+                    {/* Character 2: Sonni */}
+                    <div className="border-4 border-black p-3.5 rounded-2xl bg-amber-50/30 flex items-center gap-3.5 relative overflow-hidden">
+                      <div className="absolute top-1.5 right-1.5 bg-black text-white text-[8px] font-black uppercase px-1.5 py-0.5 rounded truncate">
+                        Coming Soon
+                      </div>
+                      <div className="w-12 h-12 rounded-full border-2 border-black overflow-hidden bg-amber-100 flex items-center justify-center shrink-0 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                        <span className="text-2xl">🎨</span>
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-black uppercase text-black">Sonni</h4>
+                        <p className="text-[10px] font-black text-[#598c0d] mt-0.5 uppercase">High-Spirited Art Guide</p>
+                        <p className="text-[9.5px] text-gray-450 font-semibold truncate">Specializes in Economics and Visual History</p>
                       </div>
                     </div>
                   </div>
@@ -1974,7 +2027,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
               </div>
 
               <p className="text-xl font-black">
-                00:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds}
+                {Math.floor(recordingSeconds / 60) < 10 ? '0' + Math.floor(recordingSeconds / 60) : Math.floor(recordingSeconds / 60)}:{recordingSeconds % 60 < 10 ? '0' + (recordingSeconds % 60) : recordingSeconds % 60}
               </p>
 
               <div className="mt-8 flex items-center justify-center gap-3">

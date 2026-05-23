@@ -32,15 +32,24 @@ interface TestsTabProps {
   lessons: Lesson[];
   theme?: "light" | "dark";
   userName?: string;
+  activeLessonId?: string | null;
 }
 
-export default function TestsTab({ lessons, theme = "light", userName = "User" }: TestsTabProps) {
+export default function TestsTab({ lessons, theme = "light", userName = "User", activeLessonId = null }: TestsTabProps) {
   const isDark = theme === "dark";
 
   // Configuration States
-  const [contentType, setContentType] = useState<"all" | "lesson" | "upload">("all");
-  const [selectedLessonId, setSelectedLessonId] = useState<string>("");
+  const [contentType, setContentType] = useState<"all" | "lesson" | "upload">(activeLessonId ? "lesson" : "all");
+  const [selectedLessonId, setSelectedLessonId] = useState<string>(activeLessonId || "");
   const [numQuestions, setNumQuestions] = useState<number>(5);
+
+  // Sync state if activeLessonId changes from main roadmap selection
+  React.useEffect(() => {
+    if (activeLessonId) {
+      setSelectedLessonId(activeLessonId);
+      setContentType("lesson");
+    }
+  }, [activeLessonId]);
 
   // Upload state specifically inside the Test tab
   const [testFile, setTestFile] = useState<File | null>(null);
@@ -242,7 +251,7 @@ export default function TestsTab({ lessons, theme = "light", userName = "User" }
   const activeQuestion = quiz?.questions[currentQuestionIndex];
 
   return (
-    <div className={`p-4 md:p-8 rounded-3xl min-h-[500px] flex flex-col gap-6 select-none ${isDark ? "bg-[#121318]" : "bg-transparent"}`}>
+    <div className={`p-4 md:p-8 rounded-3xl min-h-[500px] flex flex-col gap-6 ${isDark ? "bg-[#121318]" : "bg-transparent"}`}>
       
       {/* Quiz header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -251,7 +260,7 @@ export default function TestsTab({ lessons, theme = "light", userName = "User" }
             🧠 Diagnostic Tests & Quizzes
           </h2>
           <p className={`text-xs font-bold leading-relaxed mt-1 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-            Configure full exam-like questionnaires. Educate yourself, verify facts, and score your performance directly like NotebookLM!
+            Configure full exam-like questionnaires. Educate yourself, verify facts, and score your performance!
           </p>
         </div>
         {quiz && (
@@ -399,17 +408,18 @@ export default function TestsTab({ lessons, theme = "light", userName = "User" }
             )}
 
             {/* Number of Questions config */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               <label className={`text-xs font-black uppercase ${isDark ? "text-gray-300" : "text-gray-600"}`}>
                 Total Exam Questions:
               </label>
+              
               <div className="grid grid-cols-4 gap-2">
                 {[3, 5, 10, 15].map(num => (
                   <button
                     key={num}
                     type="button"
                     onClick={() => setNumQuestions(num)}
-                    className={`py-3.5 rounded-2xl text-xs font-black border-4 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all ${
+                    className={`py-3 rounded-2xl text-xs font-black border-4 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all ${
                       numQuestions === num
                         ? "bg-[#acf847] text-black"
                         : isDark
@@ -420,6 +430,48 @@ export default function TestsTab({ lessons, theme = "light", userName = "User" }
                     {num} Qs
                   </button>
                 ))}
+              </div>
+
+              {/* Advanced Custom count chooser */}
+              <div className={`flex items-center justify-between gap-4 border-4 border-black p-3 rounded-2xl ${isDark ? "bg-[#121318]" : "bg-slate-50"}`}>
+                <div className="flex flex-col">
+                  <span className={`text-xs font-black ${isDark ? "text-white" : "text-black"}`}>Specify Custom Quantity:</span>
+                  <span className="text-[10px] text-gray-400 font-bold">Pick exact count (1 to 20 Qs)</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNumQuestions(prev => Math.max(1, prev - 1))}
+                    disabled={numQuestions <= 1}
+                    className="w-8 h-8 rounded-lg bg-white text-black border-2 border-black flex items-center justify-center font-black hover:bg-slate-100 disabled:opacity-40 select-none shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none cursor-pointer text-xs"
+                  >
+                    -
+                  </button>
+                  
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={numQuestions}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) {
+                        setNumQuestions(Math.min(20, Math.max(1, val)));
+                      }
+                    }}
+                    className={`w-14 text-center border-2 border-black p-1 rounded-lg text-xs font-black outline-none ${isDark ? "bg-[#181920] text-white" : "bg-white text-black"}`}
+                  />
+                  
+                  <button
+                    type="button"
+                    onClick={() => setNumQuestions(prev => Math.min(20, prev + 1))}
+                    disabled={numQuestions >= 20}
+                    className="w-8 h-8 rounded-lg bg-white text-black border-2 border-black flex items-center justify-center font-black hover:bg-slate-100 disabled:opacity-40 select-none shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none cursor-pointer text-xs"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -537,7 +589,7 @@ export default function TestsTab({ lessons, theme = "light", userName = "User" }
                     key={oIdx}
                     onClick={() => selectOptionHandler(oIdx)}
                     disabled={isAnswerRevealed}
-                    className={`w-full text-left p-4 rounded-2xl border-4 font-bold text-xs md:text-sm cursor-pointer transition-all select-none flex items-start gap-3 relative ${optionStyle}`}
+                    className={`w-full text-left p-4 rounded-2xl border-4 font-bold text-xs md:text-sm cursor-pointer transition-all flex items-start gap-3 relative ${optionStyle}`}
                   >
                     <span className="w-6 h-6 shrink-0 border-2 border-black rounded-full flex items-center justify-center text-xs font-black bg-slate-100 text-black">
                       {String.fromCharCode(65 + oIdx)}
@@ -569,7 +621,7 @@ export default function TestsTab({ lessons, theme = "light", userName = "User" }
             <div className="flex items-center justify-between border-t border-gray-200 pt-4 mt-2">
               <button
                 onClick={resetToSetup}
-                className="text-xs font-black uppercase text-red-500 hover:underline select-none cursor-pointer"
+                className="text-xs font-black uppercase text-red-500 hover:underline cursor-pointer"
               >
                 Quit Quiz
               </button>
