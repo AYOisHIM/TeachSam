@@ -156,6 +156,25 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
             </g>
           )}
 
+          {/* Samson Dreadlocks Hair (Back Side layer) */}
+          {character === "samson" && (
+            <g id="samson-dreadlocks-back">
+              {/* Left side locks */}
+              <path d="M 23,45 C 13,42 6,55 8,72 C 9,84 14,84 16,74 C 18,65 24,56 24,46 Z" fill="#270e01" stroke="#000" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M 18,52 C 10,50 4,64 6,80 C 8,92 12,90 14,80 C 16,72 21,62 21,52 Z" fill="#1c0a00" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M 14,60 C 6,58 2,72 4,88 C 6,98 10,96 11,88 C 12,82 17,70 17,60 Z" fill="#270e01" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              
+              {/* Right side locks */}
+              <path d="M 77,45 C 87,42 94,55 92,72 C 91,84 86,84 84,74 C 82,65 76,56 76,46 Z" fill="#270e01" stroke="#000" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M 82,52 C 90,50 96,64 94,80 C 92,92 88,90 86,80 C 84,72 79,62 79,52 Z" fill="#1c0a00" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M 86,60 C 94,58 98,72 96,88 Q 94,98 90,96 C 89,88 84,82 84,60 Z" fill="#270e01" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+
+              {/* Extras */}
+              <path d="M 27,62 C 22,70 20,80 22,90 C 24,94 28,94 28,88 Z" fill="#1c0a00" stroke="#000" strokeWidth="3" />
+              <path d="M 73,62 C 78,70 80,80 78,90 C 76,94 72,94 72,88 Z" fill="#1c0a00" stroke="#000" strokeWidth="3" />
+            </g>
+          )}
+
           {/* Mascot Head - Slightly rotated, hand-drawn wobbly white shape from image */}
           <motion.path 
             d="M 50,18 Q 23,19 22,46 Q 21,72 50,71 Q 79,70 78,44 Q 77,18 50,18 Z" 
@@ -179,6 +198,27 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
               />
+            </g>
+          )}
+
+          {/* Samson top hair dreadlocks */}
+          {character === "samson" && (
+            <g id="samson-top-hair-dreads">
+              {/* Rugged heavy dreadlock loops on top and crown */}
+              <path d="M 23,32 C 15,10 32,4 42,16 C 30,8 18,18 23,32 Z" fill="#270e01" stroke="#000" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M 77,32 C 85,10 68,4 58,16 C 70,8 82,18 77,32 Z" fill="#270e01" stroke="#000" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+              
+              {/* Center thick tie of dread locks */}
+              <path d="M 35,16 C 35,-2 65,-2 65,16 C 60,6 40,6 35,16 Z" fill="#1c0a00" stroke="#000" strokeWidth="3" strokeLinecap="round" />
+              <path d="M 40,15 C 44,5 56,5 60,15" stroke="#000" strokeWidth="3" fill="none" />
+              
+              {/* Overlapping dreadlocks details */}
+              <path d="M 26,30 C 26,16 38,15 44,24" fill="none" stroke="#000" strokeWidth="4.5" strokeLinecap="round" />
+              <path d="M 74,30 C 74,16 62,15 56,24" fill="none" stroke="#000" strokeWidth="4.5" strokeLinecap="round" />
+
+              {/* Forehead dropping braids / dreads */}
+              <path d="M 33,28 C 30,35 32,45 36,46 C 38,40 37,32 33,28 Z" fill="#1c0a00" stroke="#000" strokeWidth="3.5" strokeLinejoin="round" />
+              <path d="M 67,28 C 70,35 68,45 64,46 C 62,40 63,32 67,28 Z" fill="#1c0a00" stroke="#000" strokeWidth="3.5" strokeLinejoin="round" />
             </g>
           )}
 
@@ -225,7 +265,7 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
           )}
 
           {/* Blush on cheeks - Pink cute circles adding extreme polish and details */}
-          {(expression === "happy" || expression === "amazed") && (
+          {(expression === "happy" || expression === "amazed") && character !== "samson" && (
             <g id="blush">
               <motion.circle 
                 cx="29" 
@@ -250,28 +290,31 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
 
           {/* Eyebrows - highly detailed and responsive addition requested! */}
           <g id="eyebrows">
-            {expression === "confused" && (
+            {character === "samson" ? (
+              <>
+                {/* Thick, dark, highly angled stern eyebrows for Samson */}
+                <path d="M 23,34 L 42,38" stroke="#1c0a00" strokeWidth="4.5" strokeLinecap="round" />
+                <path d="M 77,34 L 58,38" stroke="#1c0a00" strokeWidth="4.5" strokeLinecap="round" />
+              </>
+            ) : expression === "confused" ? (
               <>
                 {/* Slanted tilted worried brows */}
                 <motion.path d="M 30,34 Q 35,37 39,39" stroke="#000" strokeWidth="3" strokeLinecap="round" fill="none" />
                 <motion.path d="M 70,34 Q 65,37 61,39" stroke="#000" strokeWidth="3" strokeLinecap="round" fill="none" />
               </>
-            )}
-            {expression === "thinking" && (
+            ) : expression === "thinking" ? (
               <>
                 {/* One brow up, one brow down */}
                 <motion.path d="M 29,32 Q 35,30 40,33" stroke="#000" strokeWidth="3" strokeLinecap="round" fill="none" animate={{ y: [0, -1, 0] }} transition={{ repeat: Infinity, duration: 2 }} />
                 <motion.path d="M 71,36 Q 66,37 61,35" stroke="#000" strokeWidth="3" strokeLinecap="round" fill="none" />
               </>
-            )}
-            {expression === "amazed" && (
+            ) : expression === "amazed" ? (
               <>
                 {/* Highly curved excited eyebrows floating high */}
                 <motion.path d="M 28,31 Q 35,24 41,31" stroke="#000" strokeWidth="3.2" strokeLinecap="round" fill="none" animate={{ y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} />
                 <motion.path d="M 72,31 Q 65,24 59,31" stroke="#000" strokeWidth="3.2" strokeLinecap="round" fill="none" animate={{ y: [0, -2, 0] }} transition={{ repeat: Infinity, duration: 1.5 }} />
               </>
-            )}
-            {(expression === "happy" || expression === "neutral") && (
+            ) : (
               <>
                 {/* Soft natural flat-curved brows */}
                 <path d="M 29,35 Q 35,32 40,35" stroke="#000" strokeWidth="2.5" strokeLinecap="round" fill="none" />
@@ -282,14 +325,23 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
 
           {/* Eyes - situation far apart, typical to the uploaded character */}
           <g id="eyes">
-            {expression === "confused" && character !== "sonny" && (
+            {character === "samson" ? (
+              <>
+                {/* Thoroughly manly determined, stern eyes with focus scleras */}
+                <path d="M 27,45 C 30,41 38,41 41,45 C 38,47 30,47 27,45 Z" fill="#ffffff" stroke="#000" strokeWidth="2.5" strokeLinejoin="round" />
+                <path d="M 73,45 C 70,41 62,41 59,45 C 62,47 70,47 73,45 Z" fill="#ffffff" stroke="#000" strokeWidth="2.5" strokeLinejoin="round" />
+                <circle cx="34" cy="44.2" r="2.8" fill="#000000" />
+                <circle cx="66" cy="44.2" r="2.8" fill="#000000" />
+                <circle cx="33.5" cy="43.5" r="0.8" fill="#ffffff" />
+                <circle cx="65.5" cy="43.5" r="0.8" fill="#ffffff" />
+              </>
+            ) : expression === "confused" && character !== "sonny" ? (
               <>
                 {/* Worried squiggles/scrawls */}
                 <path d="M 32,41 L 40,47 M 40,41 L 32,47" stroke="#000000" strokeWidth="4" strokeLinecap="round" />
                 <path d="M 60,41 L 68,47 M 68,41 L 60,47" stroke="#000000" strokeWidth="4" strokeLinecap="round" />
               </>
-            )}
-            {expression === "amazed" && character !== "sonny" && (
+            ) : expression === "amazed" && character !== "sonny" ? (
               <>
                 {/* Shiny starry/sparkly eyes styled with multi-point stars! */}
                 <path d="M 35,38 L 37,42 L 41,40 L 39,44 L 43,46 L 39,48 L 41,52 L 37,50 L 35,54 L 33,50 L 29,52 L 31,48 L 27,46 L 31,44 L 29,40 L 33,42 Z" fill="#000000" />
@@ -298,8 +350,7 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
                 <circle cx="35" cy="46" r="1.5" fill="#ffffff" />
                 <circle cx="65" cy="46" r="1.5" fill="#ffffff" />
               </>
-            )}
-            {expression === "thinking" && character !== "sonny" && (
+            ) : expression === "thinking" && character !== "sonny" ? (
               <>
                 {/* Eyes focused sideways and slightly upwards */}
                 <circle cx="38" cy="42" r="4" fill="#000000" />
@@ -307,15 +358,16 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
                 <circle cx="39.5" cy="40.5" r="1" fill="#ffffff" />
                 <circle cx="65.5" cy="40.5" r="1" fill="#ffffff" />
               </>
-            )}
-            {(expression === "happy" || expression === "neutral") && character !== "sonny" && (
-              <>
-                {/* Dots situated far apart matching dream style face, with cute tiny white light sparkles */}
-                <circle cx="35" cy="44" r="4" fill="#000000" />
-                <circle cx="65" cy="44" r="4" fill="#000000" />
-                <circle cx="36" cy="42.5" r="1" fill="#ffffff" />
-                <circle cx="66" cy="42.5" r="1" fill="#ffffff" />
-              </>
+            ) : (
+              character !== "sonny" && (
+                <>
+                  {/* Dots situated far apart matching dream style face, with cute tiny white light sparkles */}
+                  <circle cx="35" cy="44" r="4" fill="#000000" />
+                  <circle cx="65" cy="44" r="4" fill="#000000" />
+                  <circle cx="36" cy="42.5" r="1" fill="#ffffff" />
+                  <circle cx="66" cy="42.5" r="1" fill="#ffffff" />
+                </>
+              )
             )}
           </g>
 
@@ -344,37 +396,18 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
             </g>
           )}
 
-          {/* Samson CHUNKY BEARD & Moustache */}
-          {character === "samson" && (
-            <g id="samson-beard">
-              {/* Fuzzy Beard on chin/jaw */}
-              <path 
-                d="M 22,46 C 22,64 30,76 50,76 C 70,76 78,64 78,46 C 78,60 70,72 50,72 C 30,72 22,60 22,46 Z" 
-                fill="#451a03" 
-                stroke="#000000" 
-                strokeWidth="3.5" 
-                strokeLinejoin="round" 
-              />
-              {/* Chunky Moustache */}
-              <path 
-                d="M 33,54 C 41,51 46,55 50,57 C 54,55 59,51 67,54 C 59,59 50,59 33,54 Z" 
-                fill="#270e01" 
-                stroke="#000000" 
-                strokeWidth="3" 
-                strokeLinejoin="round" 
-              />
-            </g>
-          )}
 
-          {/* Mouth - friendly long line smile matching user's image */}
+
+           {/* Mouth - friendly long line smile matching user's image */}
           <g id="mouth">
-            {expression === "confused" && (
+            {character === "samson" ? (
+              /* Flat stern mouth line under mustache */
+              <path d="M 42,58 H 58" fill="none" stroke="#000000" strokeWidth="5" strokeLinecap="round" />
+            ) : expression === "confused" ? (
               <path d="M 38,58 Q 50,67 62,58" fill="none" stroke="#000" strokeWidth="4.5" strokeLinecap="round" />
-            )}
-            {expression === "thinking" && (
+            ) : expression === "thinking" ? (
               <path d="M 41,59 H 59" fill="none" stroke="#000" strokeWidth="4.5" strokeLinecap="round" />
-            )}
-            {expression === "amazed" && (
+            ) : expression === "amazed" ? (
               <motion.path 
                 d="M 36,56 Q 50,72 64,56 Z" 
                 fill="#000000" 
@@ -383,11 +416,9 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
                 animate={{ scaleY: [0.9, 1.1, 0.9] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
-            )}
-            {expression === "happy" && (
+            ) : expression === "happy" ? (
               <path d="M 34,53 Q 50,66 66,53" fill="none" stroke="#000000" strokeWidth="5" strokeLinecap="round" />
-            )}
-            {expression === "neutral" && (
+            ) : (
               <path d="M 38,55 Q 50,64 62,55" fill="none" stroke="#000000" strokeWidth="4.5" strokeLinecap="round" />
             )}
           </g>

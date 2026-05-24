@@ -34,10 +34,25 @@ interface TestsTabProps {
   userName?: string;
   activeLessonId?: string | null;
   userEmail?: string;
+  activeCharacterId?: "sam" | "samantha" | "samson" | "sonny";
 }
 
-export default function TestsTab({ lessons, theme = "light", userName = "User", activeLessonId = null, userEmail = "" }: TestsTabProps) {
+export default function TestsTab({ 
+  lessons, 
+  theme = "light", 
+  userName = "User", 
+  activeLessonId = null, 
+  userEmail = "",
+  activeCharacterId = "sam"
+}: TestsTabProps) {
   const isDark = theme === "dark";
+
+  const charColors = {
+    sam: { color: "#84cc16", light: "#acf847", name: "Sam" },
+    samantha: { color: "#ec4899", light: "#fbcfe8", name: "Samantha" },
+    samson: { color: "#f97316", light: "#fdba74", name: "Samson" },
+    sonny: { color: "#3b82f6", light: "#93c5fd", name: "Sonny" }
+  }[activeCharacterId] || { color: "#84cc16", light: "#acf847", name: "Sam" };
 
   // Configuration States
   const [contentType, setContentType] = useState<"all" | "lesson" | "upload">(activeLessonId ? "lesson" : "all");
@@ -306,9 +321,10 @@ export default function TestsTab({ lessons, theme = "light", userName = "User", 
                 onClick={() => setContentType("all")}
                 className={`py-2 text-[11px] font-black uppercase rounded-xl transition-all ${
                   contentType === "all"
-                    ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]"
+                    ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]"
                     : "text-gray-550 border-2 border-transparent hover:bg-slate-200"
                 }`}
+                style={contentType === "all" ? { backgroundColor: charColors.color } : undefined}
               >
                 All Lessons
               </button>
@@ -317,9 +333,10 @@ export default function TestsTab({ lessons, theme = "light", userName = "User", 
                 onClick={() => setContentType("lesson")}
                 className={`py-2 text-[11px] font-black uppercase rounded-xl transition-all ${
                   contentType === "lesson"
-                    ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]"
+                    ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]"
                     : "text-gray-550 border-2 border-transparent hover:bg-slate-200"
                 }`}
+                style={contentType === "lesson" ? { backgroundColor: charColors.color } : undefined}
               >
                 Specific Lesson
               </button>
@@ -328,9 +345,10 @@ export default function TestsTab({ lessons, theme = "light", userName = "User", 
                 onClick={() => setContentType("upload")}
                 className={`py-2 text-[11px] font-black uppercase rounded-xl transition-all ${
                   contentType === "upload"
-                    ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]"
+                    ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000]"
                     : "text-gray-550 border-2 border-transparent hover:bg-slate-200"
                 }`}
+                style={contentType === "upload" ? { backgroundColor: charColors.color } : undefined}
               >
                 Upload File
               </button>
@@ -345,7 +363,8 @@ export default function TestsTab({ lessons, theme = "light", userName = "User", 
                 <select
                   value={selectedLessonId}
                   onChange={(e) => setSelectedLessonId(e.target.value)}
-                  className={`w-full border-4 border-black p-3.5 rounded-2xl text-xs font-bold outline-none ring-offset-current focus:ring-4 focus:ring-[#84cc16] ${isDark ? "bg-[#121318] text-white" : "bg-white text-black"}`}
+                  className={`w-full border-4 border-black p-3.5 rounded-2xl text-xs font-bold outline-none ring-offset-current focus:ring-4 ${isDark ? "bg-[#121318] text-white" : "bg-white text-black"}`}
+                  style={{ '--tw-ring-color': charColors.color } as React.CSSProperties}
                 >
                   <option value="">-- Choose a study topic course --</option>
                   {lessons.filter(l => l.title !== "New Topic Study").map(lesson => (

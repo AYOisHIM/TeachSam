@@ -99,11 +99,8 @@ export default function SideMenu({
                             : "hover:bg-zinc-50 text-zinc-700"
                         }`}
                     >
-                      <div 
-                        className="w-8 h-8 rounded-full border border-black flex items-center justify-center shrink-0 shadow-sm"
-                        style={{ backgroundColor: char.color }}
-                      >
-                        <span className="text-sm">{char.emoji}</span>
+                      <div className="shrink-0">
+                        <AvatarMascot expression="neutral" size="sm" character={char.id} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">

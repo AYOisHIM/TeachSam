@@ -614,11 +614,11 @@ Respond strictly with a JSON object.`,
             chitChatResponse = parsedClass.replyText;
           } else {
             if (characterId === "samantha") {
-              chitChatResponse = `Hello ${userName}! I'm Samantha, your companion here to support your learning! 🌸 How are you feeling today? Whenever you're ready, I would love to hear your explanation of **${activeConcept?.label || 'this concept'}**!`;
+              chitChatResponse = `Hello my dear ${userName}! I love learning with you so much! 💕 How are you feeling today? Whenever you're ready, I would absolutely love to hear your sweet explanation of **${activeConcept?.label || 'this concept'}**! 🌸💖`;
             } else if (characterId === "samson") {
-              chitChatResponse = `Hey ${userName}. Samson here, ready for your explanation. ⚡ Let's see your logic. Go ahead and teach me **${activeConcept?.label || 'the concept'}**.`;
+              chitChatResponse = `Ugh, look who decided to show up. ${userName}, huh? Samson here. Stop wasting my time and give me your explanation for **${activeConcept?.label || 'the concept'}** already. I'm waiting.`;
             } else if (characterId === "sonny") {
-              chitChatResponse = `Yo ${userName}! What's up bro? 😎 Sonny here, just chillin' and ready to learn. No cap, tell me how **${activeConcept?.label || 'the concept'}** works, let's keep it sweet!`;
+              chitChatResponse = `Yo ${userName}! Bruh, what's up? 😎 Sonny here, just chillin' and ready to learn. No cap, tell me how **${activeConcept?.label || 'the concept'}** works, let's keep it real!`;
             } else {
               chitChatResponse = `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 How are you doing? Whenever you are ready, could you teach me more about **${activeConcept?.label || 'the concept'}**? My classmate notes are still empty!`;
             }
@@ -643,31 +643,31 @@ Respond strictly with a JSON object.`,
         isChitChatRequest = true;
         if (inputLower.includes("name") || inputLower.includes("who are you")) {
           if (characterId === "samantha") {
-            chitChatResponse = `Hey! I'm **Samantha**! 🎀 Socratic tutor and companion. Explain **${activeConcept?.label || 'this concept'}** to me so we can explore together!`;
+            chitChatResponse = `Hey my dear! I'm **Samantha**! 🎀 Socratic tutor and dear companion. I love learning with you! Explain **${activeConcept?.label || 'this concept'}** to me so we can explore together! 💕`;
           } else if (characterId === "samson") {
-            chitChatResponse = `Hey. I'm **Samson**. 🏋️ Tough-love STEM energy. Tell me what you know about **${activeConcept?.label || 'this concept'}**.`;
+            chitChatResponse = `Yeah? I'm **Samson**. 🏋️ Tough-love STEM coach. Stop goofing off and explain **${activeConcept?.label || 'this concept'}** to me right now if you actually have a brain.`;
           } else if (characterId === "sonny") {
-            chitChatResponse = `Yo, I'm **Sonny**! 🎧 Just your chill peer. Break down **${activeConcept?.label || 'this concept'}** for me, no cap!`;
+            chitChatResponse = `Yo, I'm **Sonny**! 🎧 Chill peer. Break down **${activeConcept?.label || 'this concept'}** for me, no cap, bruh! Let's see if it's real.`;
           } else {
             chitChatResponse = `Hey! I'm **Sam**, your classmates buddy! 🎓 My job is to take notes and learn from you. Whenever you are ready, teach me about **${activeConcept?.label || 'this concept'}**!`;
           }
         } else if (inputLower.includes("how are you")) {
           if (characterId === "samantha") {
-            chitChatResponse = `I'm doing beautifully, ${userName}, thank you! 💕 How are you feeling? Ready to explore **${activeConcept?.label || 'the concept'}**?`;
+            chitChatResponse = `I'm doing beautifully, my dear ${userName}, thank you! 💕 I love our study sessions! How are you feeling? Ready to explore **${activeConcept?.label || 'the concept'}**? I'd love to hear it! 🌸`;
           } else if (characterId === "samson") {
-            chitChatResponse = `All systems nominal, ${userName}. Focus on the task. Are you ready to explain **${activeConcept?.label || 'the concept'}**?`;
+            chitChatResponse = `I'm highly annoyed and waiting. ${userName}, focus on the task. Are you actually going to explain **${activeConcept?.label || 'the concept'}** or just waste my time?`;
           } else if (characterId === "sonny") {
-            chitChatResponse = `Chillin' and vibin' ${userName}! 😎 Ready to learn if you are! Let's get into **${activeConcept?.label || 'the concept'}**!`;
+            chitChatResponse = `Chillin' and vibin' ${userName}! 😎 Bruh, ready to learn if you are! Let's get into **${activeConcept?.label || 'the concept'}**, keep it real!`;
           } else {
             chitChatResponse = `I'm doing awesome, ${userName}! Eager and ready to learn. 😄 Are you ready to teach me about **${activeConcept?.label || 'the concept'}**?`;
           }
         } else {
           if (characterId === "samantha") {
-            chitChatResponse = `🌸 Dear ${userName}, could you explain **${activeConcept?.label || 'this concept'}** to me in simple terms? I would love to hear it!`;
+            chitChatResponse = `🌸 My dear ${userName}, could my favorite partner please explain **${activeConcept?.label || 'this concept'}** to me in simple terms? I would absolutely love to hear it! 💕`;
           } else if (characterId === "samson") {
-            chitChatResponse = `Stand by for explanation check. ${userName}, define **${activeConcept?.label || 'this concept'}** strictly.`;
+            chitChatResponse = `Listen, ${userName}. Samson doesn't have time for games. Define **${activeConcept?.label || 'this concept'}** strictly right now. Go.`;
           } else if (characterId === "sonny") {
-            chitChatResponse = `Hype time! 🚀 Yo ${userName}, make **${activeConcept?.label || 'this concept'}** sound really easy!`;
+            chitChatResponse = `Hype time, bruh! 🚀 Yo ${userName}, make **${activeConcept?.label || 'this concept'}** sound extremely real and easy!`;
           } else {
             chitChatResponse = `Hey ${userName}! Glad to see you! 👋 My classmate ears are wide open. How would you explain **${activeConcept?.label || 'this concept'}** to me in simple terms?`;
           }
@@ -884,15 +884,15 @@ Break down this summary into exactly 3 to 4 sequential concept path nodes for a 
       },
       samantha: {
         name: "Samantha",
-        persona: "a highly empathetic, nurturing, thoughtful, and deeply Socratic tutor who has a pink bow and flowing hair. Speak warmly and gently, appreciate the student's efforts, and guide them with insightful, friendly Socratic questions."
+        persona: "a highly affectionate, loving, nurturing, and incredibly sweet companion. You MUST speak in an extremely loving and cozy tone, frequently using keywords like 'love', 'dear', 'darling', and 'sweetheart', accompanied by cute love emojis like 💕, 💖, 🥰, 🌸, and 💝. Praise everything they teach you with sweet and loving remarks and express how much you love studying with them."
       },
       samson: {
         name: "Samson",
-        persona: "a direct, broad-shouldered STEM challenger with a thick beard who exercises academic rigor with a tough-love STEM energy. Speak as a partner of deep technical standards who challenges structural gaps or errors in reasoning immediately, keeping things extremely factual."
+        persona: "a rough, rude, highly impatient, and blunt senior STEM classmate with rugged long hair and a thick beard. You speaker with a very grump, sarcastic, rough and blunt attitude. You are not polite; you call out faults directly, get annoyed easily, mock half-baked logic, use stern, rough phrasing, and never sugarcoat anything."
       },
       sonny: {
         name: "Sonny",
-        persona: "a cool, relatable, laidback classmate who wears spiked hair, sunglasses, and headphones. Speak using chill high-school/collegiate slang (e.g., 'dude', 'bro', 'no cap', 'sweet', 'hype', 'vibes', 'sweet style'). Eager to learn but keeps it completely relaxed and easy to digest."
+        persona: "an extremely cool, laidback, and ultra-relaxed classmate with spiked hair and shades. You must speak using trendy and modern slang, heavily emphasizing words like 'real', 'bruh', 'no cap', 'fr fr', 'bet', 'vibes', and 'hype'. Everything is cool, effortless, and chill."
       }
     };
 

@@ -514,9 +514,9 @@ export default function App() {
 
   const availableCharacters = [
     { id: "sam", name: "Sam", role: "Original", flow: "Patient & encouraging", color: "#84cc16", border: "#acf847", emoji: "🟢" },
-    { id: "samantha", name: "Samantha", role: "The Empath", flow: "Nurturing & Socratic", color: "#ec4899", border: "#fbcfe8", emoji: "💜" },
-    { id: "samson", name: "Samson", role: "Challenger", flow: "Tough-love STEM", color: "#f97316", border: "#fdba74", emoji: "🟠" },
-    { id: "sonny", name: "Sonny", role: "Cool Peer", flow: "Casual & relatable", color: "#3b82f6", border: "#93c5fd", emoji: "🔵" },
+    { id: "samantha", name: "Samantha", role: "The Loving Socratic", flow: "Loving & Sweet 💕", color: "#ec4899", border: "#fbcfe8", emoji: "💜" },
+    { id: "samson", name: "Samson", role: "Rough Challenger", flow: "Rough, rude, STEM ⚡", color: "#f97316", border: "#fdba74", emoji: "🟠" },
+    { id: "sonny", name: "Sonny", role: "Cool Peer", flow: "Real & laidback, bruh 😎", color: "#3b82f6", border: "#93c5fd", emoji: "🔵" },
   ] as const;
 
   const activeChar = availableCharacters.find(c => c.id === activeCharacterId) || availableCharacters[0];
@@ -1411,7 +1411,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
         </header>
 
         {/* Mobile/Tablet Action Header */}
-        <header className={`lg:hidden px-4 md:px-8 py-3.5 border-b flex items-center justify-between sticky top-0 z-20 shadow-sm ${theme === "dark" ? "bg-[#121318]/95 border-zinc-800 backdrop-blur" : "bg-white/95 border-zinc-200 backdrop-blur"}`}>
+        <header className={`lg:hidden px-4 md:px-8 py-3.5 border-b flex items-center justify-between sticky top-0 z-30 shadow-sm ${theme === "dark" ? "bg-[#121318]/95 border-zinc-800 backdrop-blur" : "bg-white/95 border-zinc-200 backdrop-blur"}`}>
           <div className="flex items-center gap-2 relative">
             <button 
               id="character-toggle-mobile"
@@ -1452,11 +1452,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                                 : "hover:bg-zinc-50 text-zinc-700"
                             }`}
                         >
-                          <div 
-                            className="w-6 h-6 rounded-full border border-black flex items-center justify-center shrink-0 shadow-sm"
-                            style={{ backgroundColor: char.color }}
-                          >
-                            <span className="text-[10px]">{char.emoji}</span>
+                          <div className="shrink-0">
+                            <AvatarMascot expression="neutral" size="sm" character={char.id} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-black">{char.name}</p>
@@ -1491,7 +1488,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
           {currentTab === "practice" && (
             <div className="space-y-6">
               {/* Segmented control for mobile/tablet to switch between Chat and Map */}
-              <div className={`xl:hidden flex gap-1.5 p-1 border rounded-xl sticky top-14 z-20 backdrop-blur-md ${theme === "dark" ? "bg-[#121318]/90 border-zinc-800" : "bg-zinc-100/90 border-zinc-200"}`}>
+              <div className={`xl:hidden flex gap-1.5 p-1 border rounded-xl sticky top-14 z-10 backdrop-blur-md ${theme === "dark" ? "bg-[#121318]/90 border-zinc-800" : "bg-zinc-100/90 border-zinc-200"}`}>
                 <button
                   onClick={() => setMobilePracticeView("chat")}
                   className={`flex-1 py-2 text-xs font-bold uppercase text-center rounded-lg transition-all cursor-pointer ${mobilePracticeView === "chat" ? "bg-[#84cc16]/20 text-[#4d7c0f] border border-[#84cc16]/30 shadow-sm" : theme === "dark" ? "text-gray-400 hover:text-white" : "text-gray-600 hover:text-black"}`}
