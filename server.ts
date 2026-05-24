@@ -5,7 +5,10 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import mammoth from "mammoth";
 
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
+const pdfParseFn = typeof pdf === "function" ? pdf : (pdf.default || pdf);
 
 dotenv.config();
 
@@ -28,7 +31,83 @@ const ai = new GoogleGenAI({
 
 // Seed some initial memory-based lessons (users can append more)
 import { DEFAULT_LESSONS } from "./src/defaultLessons";
+import fs from "fs";
+import bcryptjs from "bcryptjs";
+
 let userLessons = [...DEFAULT_LESSONS];
+
+const USERS_FILE_PATH = path.join(process.cwd(), "users-db.json");
+
+interface RegisteredUser {
+  id: string;
+  username: string;
+  email: string;
+  passwordHash: string;
+  createdAt: string;
+  lessons?: any[];
+  activeLessonId?: string;
+  activeConceptId?: string;
+}
+
+// Ensure the users file exists
+if (!fs.existsSync(USERS_FILE_PATH)) {
+  fs.writeFileSync(USERS_FILE_PATH, JSON.stringify({ users: [] }, null, 2));
+}
+
+// Load users from registration database
+function loadUsers(): RegisteredUser[] {
+  try {
+    const data = fs.readFileSync(USERS_FILE_PATH, "utf-8");
+    const parsed = JSON.parse(data);
+    return parsed.users || [];
+  } catch (e) {
+    console.error("Error reading users-db.json:", e);
+    return [];
+  }
+}
+
+// Save users to registration database
+function saveUsers(users: RegisteredUser[]) {
+  try {
+    fs.writeFileSync(USERS_FILE_PATH, JSON.stringify({ users }, null, 2));
+  } catch (e) {
+    console.error("Error writing to users-db.json:", e);
+  }
+}
+
+function getUserLessons(email: string | undefined): any[] {
+  if (!email) {
+    return userLessons; // fallback to guest state
+  }
+  const users = loadUsers();
+  const user = users.find(u => u.email === email.trim().toLowerCase());
+  if (!user) {
+    return userLessons;
+  }
+  if (!user.lessons) {
+    user.lessons = []; // completely empty vault for new users
+  }
+  return user.lessons;
+}
+
+function saveUserLessons(email: string | undefined, lessons: any[], activeLessonId?: string, activeConceptId?: string) {
+  if (!email) {
+    userLessons = lessons;
+    return;
+  }
+  const users = loadUsers();
+  const userIndex = users.findIndex(u => u.email === email.trim().toLowerCase());
+  if (userIndex > -1) {
+    users[userIndex].lessons = lessons;
+    if (activeLessonId !== undefined) {
+      users[userIndex].activeLessonId = activeLessonId;
+    }
+    if (activeConceptId !== undefined) {
+      users[userIndex].activeConceptId = activeConceptId;
+    }
+    saveUsers(users);
+  }
+}
 
 // Helper to make sure GEMINI_API_KEY is defined
 const checkApiKey = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -40,9 +119,194 @@ const checkApiKey = (req: express.Request, res: express.Response, next: express.
 
 app.use(checkApiKey);
 
+// User Authentication API: Register
+app.post("/api/auth/register", async (req: express.Request, res: express.Response): Promise<any> => {
+  const { username, email, password } = req.body;
+
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: "Username, email, and password are required!" });
+  }
+
+  const cleanedUsername = username.trim();
+  const cleanedEmail = email.trim().toLowerCase();
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanedEmail)) {
+    return res.status(400).json({ error: "Invalid email format!" });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters long!" });
+  }
+
+  try {
+    const users = loadUsers();
+
+    // Check if email already exists
+    const existingByEmail = users.find(u => u.email === cleanedEmail);
+    if (existingByEmail) {
+      return res.status(400).json({ error: "Email is already registered!" });
+    }
+
+    // Check if username already exists
+    const existingByUsername = users.find(u => u.username.toLowerCase() === cleanedUsername.toLowerCase());
+    if (existingByUsername) {
+      return res.status(400).json({ error: "Username is already taken!" });
+    }
+
+    // Hash password with bcryptjs before saving
+    const saltRounds = 10;
+    const passwordHash = await bcryptjs.hash(password, saltRounds);
+
+    const newUser: RegisteredUser = {
+      id: `u-${Date.now()}`,
+      username: cleanedUsername,
+      email: cleanedEmail,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+      lessons: [], // completely empty vault for new users
+      activeLessonId: "",
+      activeConceptId: ""
+    };
+
+    users.push(newUser);
+    saveUsers(users);
+
+    return res.json({
+      id: newUser.id,
+      username: newUser.username,
+      email: newUser.email,
+      createdAt: newUser.createdAt,
+      activeLessonId: "",
+      activeConceptId: ""
+    });
+  } catch (err: any) {
+    console.error("Error executing user registration:", err);
+    return res.status(500).json({ error: "Registration failed on server. Try again!" });
+  }
+});
+
+// User Authentication API: Login
+app.post("/api/auth/login", async (req: express.Request, res: express.Response): Promise<any> => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required!" });
+  }
+
+  const cleanedEmail = email.trim().toLowerCase();
+
+  try {
+    const users = loadUsers();
+    const user = users.find(u => u.email === cleanedEmail);
+
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password!" });
+    }
+
+    // Compare hashed password safely
+    const isPasswordValid = await bcryptjs.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid email or password!" });
+    }
+
+    return res.json({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      createdAt: user.createdAt,
+      activeLessonId: user.activeLessonId || "",
+      activeConceptId: user.activeConceptId || ""
+    });
+  } catch (err: any) {
+    console.error("Error executing database login:", err);
+    return res.status(500).json({ error: "Login failed on server. Try again!" });
+  }
+});
+
+// Protected Admin Endpoint: Retrieve registered user list
+app.get("/api/admin/users", (req: express.Request, res: express.Response) => {
+  const adminSecret = req.headers["x-admin-secret"] || req.query.adminSecret;
+  const userEmailHeader = req.headers["x-user-email"] || req.query.userEmail;
+
+  const isAuthorizedDev = userEmailHeader === "oluwasanmidavid53@gmail.com";
+
+  if (isAuthorizedDev) {
+    const users = loadUsers();
+    const userList = users.map(u => ({
+      username: u.username,
+      email: u.email,
+      createdAt: u.createdAt
+    }));
+    return res.json({
+      success: true,
+      count: userList.length,
+      users: userList
+    });
+  } else {
+    return res.status(403).json({
+      error: "Access Denied. You do not have permission to view administrative reports."
+    });
+  }
+});
+
 // 1. Get current lessons
 app.get("/api/lessons", (req, res) => {
-  res.json(userLessons);
+  const email = req.headers["x-user-email"] as string | undefined;
+  res.json(getUserLessons(email));
+});
+
+// 1.25 Delete a lesson material
+app.delete("/api/lessons/:id", (req, res) => {
+  const email = req.headers["x-user-email"] as string | undefined;
+  const lessonId = req.params.id;
+  const lessons = getUserLessons(email);
+  const updatedLessons = lessons.filter(l => l.id !== lessonId);
+  saveUserLessons(email, updatedLessons);
+  res.json({ success: true, message: "Study material deleted successfully!", lessons: updatedLessons });
+});
+
+// 1.35 Help and feedback submission endpoint
+app.post("/api/feedback/submit", (req, res) => {
+  const email = req.headers["x-user-email"] as string | undefined;
+  const { feedbackText } = req.body;
+
+  if (!feedbackText) {
+    return res.status(400).json({ error: "Feedback text is required!" });
+  }
+
+  const feedbackEntry = {
+    id: `fb-${Date.now()}`,
+    userEmail: email || "Anonymous Guest",
+    feedbackText,
+    timestamp: new Date().toISOString()
+  };
+
+  const FEEDBACK_FILE_PATH = path.join(process.cwd(), "feedbacks-db.json");
+  let feedbacks: any[] = [];
+  if (fs.existsSync(FEEDBACK_FILE_PATH)) {
+    try {
+      const data = fs.readFileSync(FEEDBACK_FILE_PATH, "utf-8");
+      feedbacks = JSON.parse(data).feedbacks || [];
+    } catch (e) {
+      console.error("Error reading feedbacks:", e);
+    }
+  }
+
+  feedbacks.push(feedbackEntry);
+  try {
+    fs.writeFileSync(FEEDBACK_FILE_PATH, JSON.stringify({ feedbacks }, null, 2));
+  } catch (e) {
+    console.error("Error writing feedbacks:", e);
+  }
+
+  console.log(`[FEEDBACK NOTIFIED] User: ${feedbackEntry.userEmail} sent feedback: "${feedbackText}" to oluwasanmidavid53@gmail.com.`);
+
+  res.json({
+    success: true,
+    message: "Need help or got a complaint? Tell Ayo! Form processed. Thank you, Ayo has been notified at oluwasanmidavid53@gmail.com!"
+  });
 });
 
 // 1.5 Parse uploaded files (PDF, DOCX, TXT) to text
@@ -60,7 +324,7 @@ app.post("/api/lessons/parse-upload", async (req: express.Request, res: express.
     const lowerName = fileName.toLowerCase();
 
     if (fileType?.includes("pdf") || lowerName.endsWith(".pdf")) {
-      const parsedPDF = await pdf(fileBuffer);
+      const parsedPDF = await pdfParseFn(fileBuffer);
       extractedText = parsedPDF.text || "";
     } else if (
       fileType?.includes("word") || 
@@ -141,7 +405,10 @@ app.post("/api/lessons/generate", async (req, res) => {
         numPages: Math.ceil(content.length / 800),
         concepts: mockConcepts
       };
-      userLessons.unshift(newLesson);
+      const email = req.headers["x-user-email"] as string | undefined;
+      const lessons = getUserLessons(email);
+      lessons.unshift(newLesson);
+      saveUserLessons(email, lessons, newLesson.id, "intro");
       return res.json(newLesson);
     }
 
@@ -196,7 +463,10 @@ ${content}`,
       concepts
     };
 
-    userLessons.unshift(newLesson);
+    const email = req.headers["x-user-email"] as string | undefined;
+    const lessons = getUserLessons(email);
+    lessons.unshift(newLesson);
+    saveUserLessons(email, lessons, newLesson.id, concepts[0]?.id || "");
     res.json(newLesson);
 
   } catch (error: any) {
@@ -207,6 +477,7 @@ ${content}`,
 
 // 3. Reset/Reset default lessons to initial state
 app.post("/api/lessons/new-blank", (req, res) => {
+  const email = req.headers["x-user-email"] as string | undefined;
   const newBlankLesson = {
     id: `blank-${Date.now()}`,
     title: "New Topic Study",
@@ -226,22 +497,32 @@ app.post("/api/lessons/new-blank", (req, res) => {
       }
     ]
   };
-  userLessons.unshift(newBlankLesson);
+  const lessons = getUserLessons(email);
+  lessons.unshift(newBlankLesson);
+  saveUserLessons(email, lessons, newBlankLesson.id, "awaiting-user-input");
   res.json(newBlankLesson);
 });
 
 app.post("/api/lessons/reset", (req, res) => {
-  userLessons = [...DEFAULT_LESSONS];
-  res.json({ message: "Lessons refreshed to seed defaults!", lessons: userLessons });
+  const email = req.headers["x-user-email"] as string | undefined;
+  if (email) {
+    saveUserLessons(email, [], "", "");
+    res.json({ message: "Lessons refreshed!", lessons: [] });
+  } else {
+    userLessons = [...DEFAULT_LESSONS];
+    res.json({ message: "Lessons refreshed to seed defaults!", lessons: userLessons });
+  }
 });
 
 // 4. Evaluate explanation
 app.post("/api/chat/evaluate", async (req, res) => {
-  const { lessonId, chatHistory, latestMessage, activeConceptId, userName = "User" } = req.body;
+  const { lessonId, chatHistory, latestMessage, activeConceptId, userName = "User", characterId = "sam" } = req.body;
+  const email = req.headers["x-user-email"] as string | undefined;
+  const lessons = getUserLessons(email);
 
-  let currentLesson = userLessons.find(l => l.id === lessonId);
+  let currentLesson = lessons.find(l => l.id === lessonId);
   if (!currentLesson) {
-    currentLesson = userLessons[0];
+    currentLesson = lessons[0];
   }
 
   try {
@@ -329,7 +610,19 @@ Respond strictly with a JSON object.`,
           newTopicSubject = parsedClass.subject || "General Study";
         } else if (parsedClass.intent === "chitchat") {
           isChitChatRequest = true;
-          chitChatResponse = parsedClass.replyText || `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 How are you doing? Whenever you are ready, could you teach me more about **${activeConcept?.label || 'the concept'}**? My classmate notes are still empty!`;
+          if (parsedClass.replyText) {
+            chitChatResponse = parsedClass.replyText;
+          } else {
+            if (characterId === "samantha") {
+              chitChatResponse = `Hello ${userName}! I'm Samantha, your companion here to support your learning! 🌸 How are you feeling today? Whenever you're ready, I would love to hear your explanation of **${activeConcept?.label || 'this concept'}**!`;
+            } else if (characterId === "samson") {
+              chitChatResponse = `Hey ${userName}. Samson here, ready for your explanation. ⚡ Let's see your logic. Go ahead and teach me **${activeConcept?.label || 'the concept'}**.`;
+            } else if (characterId === "sonny") {
+              chitChatResponse = `Yo ${userName}! What's up bro? 😎 Sonny here, just chillin' and ready to learn. No cap, tell me how **${activeConcept?.label || 'the concept'}** works, let's keep it sweet!`;
+            } else {
+              chitChatResponse = `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 How are you doing? Whenever you are ready, could you teach me more about **${activeConcept?.label || 'the concept'}**? My classmate notes are still empty!`;
+            }
+          }
         }
       } catch (err) {
         console.error("Error during dynamic intent check:", err);
@@ -349,11 +642,35 @@ Respond strictly with a JSON object.`,
       if (isGreetingOrChitchat) {
         isChitChatRequest = true;
         if (inputLower.includes("name") || inputLower.includes("who are you")) {
-          chitChatResponse = `Hey! I'm **Sam**, your classmates buddy! 🎓 My job is to take notes and learn from you. Whenever you are ready, teach me about **${activeConcept?.label || 'this concept'}**!`;
+          if (characterId === "samantha") {
+            chitChatResponse = `Hey! I'm **Samantha**! 🎀 Socratic tutor and companion. Explain **${activeConcept?.label || 'this concept'}** to me so we can explore together!`;
+          } else if (characterId === "samson") {
+            chitChatResponse = `Hey. I'm **Samson**. 🏋️ Tough-love STEM energy. Tell me what you know about **${activeConcept?.label || 'this concept'}**.`;
+          } else if (characterId === "sonny") {
+            chitChatResponse = `Yo, I'm **Sonny**! 🎧 Just your chill peer. Break down **${activeConcept?.label || 'this concept'}** for me, no cap!`;
+          } else {
+            chitChatResponse = `Hey! I'm **Sam**, your classmates buddy! 🎓 My job is to take notes and learn from you. Whenever you are ready, teach me about **${activeConcept?.label || 'this concept'}**!`;
+          }
         } else if (inputLower.includes("how are you")) {
-          chitChatResponse = `I'm doing awesome, ${userName}! Eager and ready to learn. 😄 Are you ready to teach me about **${activeConcept?.label || 'the concept'}**?`;
+          if (characterId === "samantha") {
+            chitChatResponse = `I'm doing beautifully, ${userName}, thank you! 💕 How are you feeling? Ready to explore **${activeConcept?.label || 'the concept'}**?`;
+          } else if (characterId === "samson") {
+            chitChatResponse = `All systems nominal, ${userName}. Focus on the task. Are you ready to explain **${activeConcept?.label || 'the concept'}**?`;
+          } else if (characterId === "sonny") {
+            chitChatResponse = `Chillin' and vibin' ${userName}! 😎 Ready to learn if you are! Let's get into **${activeConcept?.label || 'the concept'}**!`;
+          } else {
+            chitChatResponse = `I'm doing awesome, ${userName}! Eager and ready to learn. 😄 Are you ready to teach me about **${activeConcept?.label || 'the concept'}**?`;
+          }
         } else {
-          chitChatResponse = `Hey ${userName}! Glad to see you! 👋 My classmate ears are wide open. How would you explain **${activeConcept?.label || 'this concept'}** to me in simple terms?`;
+          if (characterId === "samantha") {
+            chitChatResponse = `🌸 Dear ${userName}, could you explain **${activeConcept?.label || 'this concept'}** to me in simple terms? I would love to hear it!`;
+          } else if (characterId === "samson") {
+            chitChatResponse = `Stand by for explanation check. ${userName}, define **${activeConcept?.label || 'this concept'}** strictly.`;
+          } else if (characterId === "sonny") {
+            chitChatResponse = `Hype time! 🚀 Yo ${userName}, make **${activeConcept?.label || 'this concept'}** sound really easy!`;
+          } else {
+            chitChatResponse = `Hey ${userName}! Glad to see you! 👋 My classmate ears are wide open. How would you explain **${activeConcept?.label || 'this concept'}** to me in simple terms?`;
+          }
         }
       } else if (inputLower.length > 3 && inputLower.length < 60) {
         // Fallback newTopic check
@@ -396,7 +713,7 @@ Respond strictly with a JSON object.`,
     // Handle topic switching or dynamic on-the-fly lesson synthesis
     if (isNewTopicRequest && newTopicTitle) {
       // 1. Check if we already have this lesson
-      const existingLesson = userLessons.find(l => 
+      const existingLesson = lessons.find(l => 
         l.title.toLowerCase().includes(newTopicTitle.toLowerCase()) || 
         newTopicTitle.toLowerCase().includes(l.title.toLowerCase())
       );
@@ -405,6 +722,9 @@ Respond strictly with a JSON object.`,
         const activeNode = existingLesson.concepts.find(c => c.status === "active") || existingLesson.concepts[0];
         const greetingText = `Oh, awesome! You want to study **${existingLesson.title}**? Let's switch right over! I'm ready. We are currently trying to make sense of **${activeNode?.label}**. Tell me in simple terms, how does it work?`;
         
+        // Also save active lesson/concept bookmark on switches!
+        saveUserLessons(email, lessons, existingLesson.id, activeNode?.id || "");
+
         return res.json({
           id: `sam-${Date.now()}`,
           sender: "sam",
@@ -507,8 +827,9 @@ Break down this summary into exactly 3 to 4 sequential concept path nodes for a 
       };
 
       // Clear out any blank placeholder templates
-      userLessons = userLessons.filter(l => !l.id.startsWith("blank-") && l.title !== "New Topic Study");
-      userLessons.unshift(newLesson);
+      const updatedLessons = lessons.filter(l => !l.id.startsWith("blank-") && l.title !== "New Topic Study");
+      updatedLessons.unshift(newLesson);
+      saveUserLessons(email, updatedLessons, newLesson.id, concepts[0]?.id || "");
 
       const responseMessage = `Wooah, **${newTopicTitle}** under **${newTopicSubject}**? That sounds like a cool topic! My electronic synapses are totally empty on this subject right now. I've automatically assembled an educational progress roadmap for us! Let's start with our first concept: **${concepts[0]?.label}**. How would you explain that simply?`;
 
@@ -556,8 +877,29 @@ Break down this summary into exactly 3 to 4 sequential concept path nodes for a 
 
     const activeConceptLabel = activeConcept?.label || "the active concept";
 
-    const promptSystem = `You are Sam, a curious, enthusiastic, but clueless peer of the student.
-The student you are talking to is named "${userName}". You MUST call them by their name "${userName}" (or friendly slang versions like "hey ${userName}!", "woah ${userName}!") when answering or asking questions!
+    const characterProperties = {
+      sam: {
+        name: "Sam",
+        persona: "a curious, enthusiastic, but slightly confused classmate peer who wears a graduation cap and glasses. Talk like an enthusiastic partner who is eager to take notes of what the student teaches."
+      },
+      samantha: {
+        name: "Samantha",
+        persona: "a highly empathetic, nurturing, thoughtful, and deeply Socratic tutor who has a pink bow and flowing hair. Speak warmly and gently, appreciate the student's efforts, and guide them with insightful, friendly Socratic questions."
+      },
+      samson: {
+        name: "Samson",
+        persona: "a direct, broad-shouldered STEM challenger with a thick beard who exercises academic rigor with a tough-love STEM energy. Speak as a partner of deep technical standards who challenges structural gaps or errors in reasoning immediately, keeping things extremely factual."
+      },
+      sonny: {
+        name: "Sonny",
+        persona: "a cool, relatable, laidback classmate who wears spiked hair, sunglasses, and headphones. Speak using chill high-school/collegiate slang (e.g., 'dude', 'bro', 'no cap', 'sweet', 'hype', 'vibes', 'sweet style'). Eager to learn but keeps it completely relaxed and easy to digest."
+      }
+    };
+
+    const activeChar = characterProperties[characterId as keyof typeof characterProperties] || characterProperties.sam;
+
+    const promptSystem = `You are ${activeChar.name}, ${activeChar.persona}.
+The student you are talking to is named "${userName}". You MUST call them by their name "${userName}" (or personalized greetings matching your persona like "yo ${userName}!" or "dear ${userName}") when answering or asking questions!
 
 A student is trying to teach you about a topic: "${currentLesson.title}".
 Specifically, they are currently aiming to teach you this subconcept: "${activeConceptLabel}".
@@ -569,16 +911,15 @@ ${currentLesson.content}
 The active concepts map includes:
 ${conceptsList}
 
-YOUR BEHAVIOR AS SAM:
-1. Speak informally and casual, like a curious student partner. (e.g., Use student slang, "Ooh!", "Woah", "Wait, I'm confused!", "Let me check if I got this").
-2. ACT CONFUSED about technical details, and probe them to explain the "why" and "how".
-3. Check their response against the reference textbook material. If their explanation is accurate:
-   - Praise them and feel enlightened! Refer to them by name: "${userName}"!
+YOUR BEHAVIOR AS ${activeChar.name.toUpperCase()}:
+1. Speak strictly according to your specified persona, style, and tone. Keep the chat interactive, highly engaging, and full of character!
+2. Check their response against the reference textbook material. If their explanation is accurate:
+   - Praise them and feel enlightened according to your specific style! Refer to them by name: "${userName}".
    - Mark the current concept id "${activeConceptId}" as unlocked.
-4. If they missed core facts, mechanisms, or got them wrong:
+3. If they missed core facts, mechanisms, or got them wrong:
    - Do NOT just tell them the answer or the missing elements directly.
-   - Speak as an eager but confused buddy and ask a question focusing on that missing piece (e.g. "Wait ${userName}, you said water splits, but where does the oxygen go?").
-5. Provide a helpful, visual, cute analogy (using everyday things like soccer, kitchens, cars, video game levels) to bridge understanding.
+   - Speak as your persona and ask a question or cue focusing on that missing piece.
+4. Provide a helpful, visual, cute analogy (styled exactly in your design/persona vibe!) to bridge understanding.
 
 Now evaluate the student's latest explanation:
 "${latestMessage}"
@@ -769,9 +1110,9 @@ ${chatHistoryFormatted}`;
 
     // Dynamically update the lesson state in our simple state memory store!
     if (parsedSamResponse.unlockedConceptIds && parsedSamResponse.unlockedConceptIds.length > 0) {
-      const lessonIndex = userLessons.findIndex(l => l.id === lessonId);
+      const lessonIndex = lessons.findIndex(l => l.id === lessonId);
       if (lessonIndex > -1) {
-        const updatedConcepts = userLessons[lessonIndex].concepts.map(c => {
+        const updatedConcepts = lessons[lessonIndex].concepts.map(c => {
           let updatedStatus = c.status;
           if (parsedSamResponse.unlockedConceptIds.includes(c.id)) {
             updatedStatus = "unlocked" as const;
@@ -792,9 +1133,12 @@ ${chatHistoryFormatted}`;
         });
 
         const newProgress = Math.round((unlockedCount / updatedConcepts.length) * 100);
-        userLessons[lessonIndex].concepts = updatedConcepts;
-        userLessons[lessonIndex].progress = newProgress;
-        userLessons[lessonIndex].status = newProgress === 100 ? "Mastered" : "In Progress";
+        lessons[lessonIndex].concepts = updatedConcepts;
+        lessons[lessonIndex].progress = newProgress;
+        lessons[lessonIndex].status = newProgress === 100 ? "Mastered" : "In Progress";
+
+        const newlyActive = updatedConcepts.find(c => c.status === "active") || updatedConcepts[updatedConcepts.length - 1];
+        saveUserLessons(email, lessons, lessonId, newlyActive?.id || "");
       }
     }
 
@@ -821,10 +1165,12 @@ ${chatHistoryFormatted}`;
 // ——— ENHANCED: Explanation generation endpoint ———
 app.post("/api/chat/explain", async (req, res) => {
   const { lessonId, activeConceptId } = req.body;
+  const email = req.headers["x-user-email"] as string | undefined;
+  const lessons = getUserLessons(email);
   
-  let currentLesson = userLessons.find(l => l.id === lessonId);
+  let currentLesson = lessons.find(l => l.id === lessonId);
   if (!currentLesson) {
-    currentLesson = userLessons[0];
+    currentLesson = lessons[0];
   }
   
   const activeConcept = currentLesson?.concepts.find(c => c.id === activeConceptId) || currentLesson?.concepts[0];
@@ -865,6 +1211,8 @@ It is like order lines at a fast-food counter - you line up, they serve you, and
 // ——— ENHANCED: Interactive Test Quiz Generator ———
 app.post("/api/quiz/generate", async (req, res) => {
   const { contentType, lessonId, uploadedText, numQuestions = 5 } = req.body;
+  const email = req.headers["x-user-email"] as string | undefined;
+  const lessons = getUserLessons(email);
   
   let sourceText = "";
   let sourceTitle = "General Knowledge";
@@ -872,13 +1220,13 @@ app.post("/api/quiz/generate", async (req, res) => {
   if (contentType === "lesson") {
     let lesson = null;
     if (lessonId) {
-      lesson = userLessons.find(l => l.id === lessonId);
+      lesson = lessons.find(l => l.id === lessonId);
       if (!lesson) {
-        lesson = userLessons.find(l => l.title.toLowerCase().includes(lessonId.toLowerCase()) || l.id.toLowerCase().includes(lessonId.toLowerCase()));
+        lesson = lessons.find(l => l.title.toLowerCase().includes(lessonId.toLowerCase()) || l.id.toLowerCase().includes(lessonId.toLowerCase()));
       }
     }
-    if (!lesson && userLessons.length > 0) {
-      lesson = userLessons[0];
+    if (!lesson && lessons.length > 0) {
+      lesson = lessons[0];
     }
     if (lesson) {
       sourceText = lesson.content;
@@ -888,14 +1236,14 @@ app.post("/api/quiz/generate", async (req, res) => {
     sourceText = uploadedText;
     sourceTitle = "Your Uploaded Document";
   } else {
-    sourceText = userLessons.map(l => `[Lesson: ${l.title} in Subject ${l.subject}]\nReference Material:\n${l.content}`).join("\n\n");
+    sourceText = lessons.map(l => `[Lesson: ${l.title} in Subject ${l.subject}]\nReference Material:\n${l.content}`).join("\n\n");
     sourceTitle = "Aggregate Study Material";
   }
   
   if (!sourceText.trim()) {
-    if (userLessons.length > 0) {
-      sourceText = userLessons[0].content;
-      sourceTitle = userLessons[0].title;
+    if (lessons.length > 0) {
+      sourceText = lessons[0].content;
+      sourceTitle = lessons[0].title;
     } else {
       sourceText = "Photosynthesis basics, light-dependent reactions water splitting, ATP synthesis, Calvin cycle carbon fixation.";
     }

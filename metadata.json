@@ -1,5 +1,5 @@
 {
-  "name": "TeachSam",
+  "name": "TeachSam Companion",
   "description": "An interactive Feynman Technique learning tutor where you master concepts by teaching a friendly, confused AI peer.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

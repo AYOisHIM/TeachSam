@@ -33,9 +33,10 @@ interface TestsTabProps {
   theme?: "light" | "dark";
   userName?: string;
   activeLessonId?: string | null;
+  userEmail?: string;
 }
 
-export default function TestsTab({ lessons, theme = "light", userName = "User", activeLessonId = null }: TestsTabProps) {
+export default function TestsTab({ lessons, theme = "light", userName = "User", activeLessonId = null, userEmail = "" }: TestsTabProps) {
   const isDark = theme === "dark";
 
   // Configuration States
@@ -112,7 +113,10 @@ export default function TestsTab({ lessons, theme = "light", userName = "User", 
 
             const response = await fetch("/api/lessons/parse-upload", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { 
+                "Content-Type": "application/json",
+                "x-user-email": userEmail
+              },
               body: JSON.stringify({
                 fileName: file.name,
                 fileType: file.type,
@@ -168,7 +172,10 @@ export default function TestsTab({ lessons, theme = "light", userName = "User", 
 
       const response = await fetch("/api/quiz/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-user-email": userEmail
+        },
         body: JSON.stringify({
           contentType,
           lessonId: selectedLessonId,

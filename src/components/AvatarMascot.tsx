@@ -4,15 +4,25 @@ import { motion } from "motion/react";
 interface AvatarMascotProps {
   expression: "neutral" | "confused" | "amazed" | "thinking" | "happy";
   size?: "sm" | "md" | "lg" | "xl";
+  character?: "sam" | "samantha" | "samson" | "sonny";
 }
 
-export default function AvatarMascot({ expression, size = "md" }: AvatarMascotProps) {
+export default function AvatarMascot({ expression, size = "md", character = "sam" }: AvatarMascotProps) {
   const getDimensions = () => {
     switch (size) {
       case "sm": return "w-10 h-10 border-2 shadow-[2px_2px_0px_0px_#000]";
       case "md": return "w-16 h-16 border-4 shadow-[3px_3px_0px_0px_#000]";
       case "lg": return "w-28 h-28 border-4 shadow-[4px_4px_0px_0px_#000]";
       case "xl": return "w-40 h-40 border-4 shadow-[5px_5px_0px_0px_#000]";
+    }
+  };
+
+  const getBackgroundColor = () => {
+    switch (character) {
+      case "samantha": return "#fbcfe8"; // Pink themed Samantha
+      case "samson": return "#fdba74"; // Orange themed Samson
+      case "sonny": return "#93c5fd"; // Blue themed Sonny
+      default: return "#acf847"; // Green themed Sam
     }
   };
 
@@ -37,7 +47,7 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
       className={borderClass}
       variants={containerVariants}
       animate="animate"
-      style={{ backgroundColor: "#acf847" }} // Vibrant lime green background matching neo-brutalist theme
+      style={{ backgroundColor: getBackgroundColor() }}
     >
       {/* Hand-drawn character with wobbly head, detailed facial expressions, blush, eyebrows, accessories */}
       <div className="w-full h-full relative">
@@ -103,6 +113,17 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
             </g>
           )}
 
+          {/* Samson broad build shoulder backing */}
+          {character === "samson" && (
+            <path 
+              d="M 18,74 C 18,84 10,95 10,103 L 90,103 C 90,95 82,84 82,74 Z" 
+              fill="#d1d5db" 
+              stroke="#000000" 
+              strokeWidth="4.5" 
+              strokeLinejoin="round" 
+            />
+          )}
+
           {/* White Torso / Body - organic hand-drawn line extending to bottom */}
           <path 
             d="M 36,73 C 32,84 30,94 32,103 L 68,103 C 70,94 68,84 64,73 Z" 
@@ -112,6 +133,28 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
             strokeLinecap="round" 
             strokeLinejoin="round" 
           />
+
+          {/* Samantha Flowing Hair (Back Side layer) */}
+          {character === "samantha" && (
+            <g id="samantha-back-hair">
+              <path 
+                d="M 23,45 C 10,48 11,80 16,84 C 20,88 28,78 28,68 Z" 
+                fill="#f472b6" 
+                stroke="#000" 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+              />
+              <path 
+                d="M 77,45 C 90,48 89,80 84,84 C 80,88 72,78 72,68 Z" 
+                fill="#f472b6" 
+                stroke="#000" 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+              />
+            </g>
+          )}
 
           {/* Mascot Head - Slightly rotated, hand-drawn wobbly white shape from image */}
           <motion.path 
@@ -124,6 +167,62 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
             animate={expression === "thinking" ? { rotate: [-1.5, 1.5, -1.5] } : {}}
             transition={{ repeat: Infinity, duration: 3.5, ease: "easeInOut" }}
           />
+
+          {/* Sonny Spikes hair */}
+          {character === "sonny" && (
+            <g id="sonny-spikes">
+              <path 
+                d="M 27,20 L 30,6 L 38,18 L 44,4 L 50,18 L 56,4 L 62,18 L 69,6 L 73,20" 
+                fill="#2563eb" 
+                stroke="#000" 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+              />
+            </g>
+          )}
+
+          {/* Sam Grad cap on top of head */}
+          {character === "sam" && (
+            <g id="grad-cap">
+              <polygon points="50,4 72,13 50,22 28,13" fill="#1e293b" stroke="#000" strokeWidth="4.5" strokeLinejoin="round" />
+              <polygon points="40,16 40,21 60,21 60,16" fill="#1e293b" stroke="#000" strokeWidth="4" />
+              <path d="M 50,13 L 34,15 L 32,24" stroke="#eab308" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+              <circle cx="32" cy="25" r="2.5" fill="#eab308" stroke="#000" strokeWidth="1" />
+            </g>
+          )}
+
+          {/* Samantha Pink Bow */}
+          {character === "samantha" && (
+            <g id="samantha-bow" transform="translate(68, 22) rotate(15)">
+              <polygon points="0,0 -14,-10 -14,10" fill="#db2777" stroke="#000" strokeWidth="3" strokeLinejoin="round" />
+              <polygon points="0,0 14,-10 14,10" fill="#db2777" stroke="#000" strokeWidth="3" strokeLinejoin="round" />
+              <circle cx="0" cy="0" r="5.5" fill="#f472b6" stroke="#000" strokeWidth="3" />
+            </g>
+          )}
+
+          {/* Sonny Retro headphones headband */}
+          {character === "sonny" && (
+            <g id="sonny-headphones-band">
+              <path 
+                d="M 22,46 C 22,12 78,12 78,46" 
+                fill="none" 
+                stroke="#3b82f6" 
+                strokeWidth="7" 
+                strokeLinecap="round" 
+              />
+              <path 
+                d="M 22,46 C 22,12 78,12 78,46" 
+                fill="none" 
+                stroke="#000" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+              />
+              {/* Ear Cups */}
+              <rect x="11" y="38" width="11" height="19" rx="5" fill="#2563eb" stroke="#000000" strokeWidth="3.5" />
+              <rect x="78" y="38" width="11" height="19" rx="5" fill="#2563eb" stroke="#000000" strokeWidth="3.5" />
+            </g>
+          )}
 
           {/* Blush on cheeks - Pink cute circles adding extreme polish and details */}
           {(expression === "happy" || expression === "amazed") && (
@@ -183,14 +282,14 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
 
           {/* Eyes - situation far apart, typical to the uploaded character */}
           <g id="eyes">
-            {expression === "confused" && (
+            {expression === "confused" && character !== "sonny" && (
               <>
                 {/* Worried squiggles/scrawls */}
                 <path d="M 32,41 L 40,47 M 40,41 L 32,47" stroke="#000000" strokeWidth="4" strokeLinecap="round" />
                 <path d="M 60,41 L 68,47 M 68,41 L 60,47" stroke="#000000" strokeWidth="4" strokeLinecap="round" />
               </>
             )}
-            {expression === "amazed" && (
+            {expression === "amazed" && character !== "sonny" && (
               <>
                 {/* Shiny starry/sparkly eyes styled with multi-point stars! */}
                 <path d="M 35,38 L 37,42 L 41,40 L 39,44 L 43,46 L 39,48 L 41,52 L 37,50 L 35,54 L 33,50 L 29,52 L 31,48 L 27,46 L 31,44 L 29,40 L 33,42 Z" fill="#000000" />
@@ -200,7 +299,7 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
                 <circle cx="65" cy="46" r="1.5" fill="#ffffff" />
               </>
             )}
-            {expression === "thinking" && (
+            {expression === "thinking" && character !== "sonny" && (
               <>
                 {/* Eyes focused sideways and slightly upwards */}
                 <circle cx="38" cy="42" r="4" fill="#000000" />
@@ -209,7 +308,7 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
                 <circle cx="65.5" cy="40.5" r="1" fill="#ffffff" />
               </>
             )}
-            {(expression === "happy" || expression === "neutral") && (
+            {(expression === "happy" || expression === "neutral") && character !== "sonny" && (
               <>
                 {/* Dots situated far apart matching dream style face, with cute tiny white light sparkles */}
                 <circle cx="35" cy="44" r="4" fill="#000000" />
@@ -219,6 +318,53 @@ export default function AvatarMascot({ expression, size = "md" }: AvatarMascotPr
               </>
             )}
           </g>
+
+          {/* Sonny COOL SHADES covering the eyes */}
+          {character === "sonny" && (
+            <g id="sonny-shades">
+              <polygon points="23,39 46,39 43,51 26,51" fill="#111827" stroke="#000" strokeWidth="3" strokeLinejoin="round" />
+              <polygon points="54,39 77,39 74,51 57,51" fill="#111827" stroke="#000" strokeWidth="3" strokeLinejoin="round" />
+              <line x1="46" y1="42" x2="54" y2="42" stroke="#000" strokeWidth="4" />
+              <line x1="23" y1="41" x2="18" y2="44" stroke="#000" strokeWidth="3.5" />
+              <line x1="77" y1="41" x2="82" y2="44" stroke="#000" strokeWidth="3.5" />
+              {/* Reflective shine stripes */}
+              <line x1="28" y1="42" x2="35" y2="48" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
+              <line x1="59" y1="42" x2="66" y2="48" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
+            </g>
+          )}
+
+          {/* Sam Elegant Round GLASSES */}
+          {character === "sam" && (
+            <g id="sam-glasses">
+              <circle cx="35" cy="44" r="10.5" fill="none" stroke="#000000" strokeWidth="3.5" />
+              <circle cx="65" cy="44" r="10.5" fill="none" stroke="#000000" strokeWidth="3.5" />
+              <line x1="45.5" y1="44" x2="54.5" y2="44" stroke="#000000" strokeWidth="4" strokeLinecap="round" />
+              <line x1="24.5" y1="44" x2="19.5" y2="46" stroke="#000005" strokeWidth="3" />
+              <line x1="75.5" y1="44" x2="80.5" y2="46" stroke="#000005" strokeWidth="3" />
+            </g>
+          )}
+
+          {/* Samson CHUNKY BEARD & Moustache */}
+          {character === "samson" && (
+            <g id="samson-beard">
+              {/* Fuzzy Beard on chin/jaw */}
+              <path 
+                d="M 22,46 C 22,64 30,76 50,76 C 70,76 78,64 78,46 C 78,60 70,72 50,72 C 30,72 22,60 22,46 Z" 
+                fill="#451a03" 
+                stroke="#000000" 
+                strokeWidth="3.5" 
+                strokeLinejoin="round" 
+              />
+              {/* Chunky Moustache */}
+              <path 
+                d="M 33,54 C 41,51 46,55 50,57 C 54,55 59,51 67,54 C 59,59 50,59 33,54 Z" 
+                fill="#270e01" 
+                stroke="#000000" 
+                strokeWidth="3" 
+                strokeLinejoin="round" 
+              />
+            </g>
+          )}
 
           {/* Mouth - friendly long line smile matching user's image */}
           <g id="mouth">
