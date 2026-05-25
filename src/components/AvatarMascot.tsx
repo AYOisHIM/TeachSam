@@ -3,13 +3,14 @@ import { motion } from "motion/react";
 
 interface AvatarMascotProps {
   expression: "neutral" | "confused" | "amazed" | "thinking" | "happy";
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   character?: "sam" | "samantha" | "samson" | "sonny";
 }
 
 export default function AvatarMascot({ expression, size = "md", character = "sam" }: AvatarMascotProps) {
   const getDimensions = () => {
     switch (size) {
+      case "xs": return "w-7 h-7 border shadow-[1px_1px_0px_0px_#000]";
       case "sm": return "w-10 h-10 border-2 shadow-[2px_2px_0px_0px_#000]";
       case "md": return "w-16 h-16 border-4 shadow-[3px_3px_0px_0px_#000]";
       case "lg": return "w-28 h-28 border-4 shadow-[4px_4px_0px_0px_#000]";
@@ -177,7 +178,10 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
 
           {/* Mascot Head - Slightly rotated, hand-drawn wobbly white shape from image */}
           <motion.path 
-            d="M 50,18 Q 23,19 22,46 Q 21,72 50,71 Q 79,70 78,44 Q 77,18 50,18 Z" 
+            d={character === "samson" 
+              ? "M 50,18 Q 23,19 22,46 Q 21,63 32,65 L 50,73 L 68,65 Q 79,63 78,44 Q 77,18 50,18 Z"
+              : "M 50,18 Q 23,19 22,46 Q 21,72 50,71 Q 79,70 78,44 Q 77,18 50,18 Z"
+            } 
             fill="#ffffff" 
             stroke="#000000" 
             strokeWidth="4.5" 
@@ -397,6 +401,80 @@ export default function AvatarMascot({ expression, size = "md", character = "sam
           )}
 
 
+
+          {/* Samson Stubble Goatee Beard */}
+          {character === "samson" && (
+            <g id="samson-stubble-goatee">
+              {/* Soft five o'clock shadow backdrop for goatee layout */}
+              <path 
+                d="M 33,52 C 40,51 45,54 50,54 C 55,54 60,51 67,52 L 64,65 C 60,71 50,72 40,71 L 33,52 Z" 
+                fill="#1c0a00" 
+                opacity="0.22" 
+              />
+              
+              {/* Mustache stubble lines */}
+              <path 
+                d="M 33,52 C 40,51 45,54 50,54 C 55,54 60,51 67,52" 
+                fill="none" 
+                stroke="#1c0a00" 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+                strokeDasharray="1 3.5" 
+              />
+              <path 
+                d="M 35,50 C 42,49 45,52 50,52 C 55,52 58,49 65,50" 
+                fill="none" 
+                stroke="#270e01" 
+                strokeWidth="3.2" 
+                strokeLinecap="round" 
+                strokeDasharray="1.5 4" 
+              />
+
+              {/* Side goatee ring connectors */}
+              <path 
+                d="M 34,52 Q 35,59 38,64" 
+                fill="none" 
+                stroke="#1c0a00" 
+                strokeWidth="3.8" 
+                strokeLinecap="round" 
+                strokeDasharray="1 3" 
+              />
+              <path 
+                d="M 66,52 Q 65,59 62,64" 
+                fill="none" 
+                stroke="#1c0a00" 
+                strokeWidth="3.8" 
+                strokeLinecap="round" 
+                strokeDasharray="1 3" 
+              />
+
+              {/* Chin stubble line & density */}
+              <path 
+                d="M 37,64 C 40,71 45,71.5 50,71.5 C 55,71.5 60,71 63,64" 
+                fill="none" 
+                stroke="#1c0a00" 
+                strokeWidth="4.5" 
+                strokeLinecap="round" 
+                strokeDasharray="1 3" 
+              />
+              <path 
+                d="M 40,66 C 43,70 47,70.5 50,70.5 C 53,70.5 57,70 60,66" 
+                fill="none" 
+                stroke="#270e01" 
+                strokeWidth="3.5" 
+                strokeLinecap="round" 
+                strokeDasharray="1 3.5" 
+              />
+              <path 
+                d="M 45,59 C 45,64 47,66.5 50,66.5 C 53,66.5 55,64 55,59" 
+                fill="none" 
+                stroke="#1c0a00" 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+                strokeDasharray="1 3.5" 
+              />
+            </g>
+          )}
 
            {/* Mouth - friendly long line smile matching user's image */}
           <g id="mouth">

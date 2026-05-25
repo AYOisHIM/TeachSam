@@ -506,7 +506,8 @@ export default function TestsTab({
               id="generate-test-btn"
               onClick={startQuizGeneration}
               disabled={isUploading || isGenerating || (contentType === "lesson" && !selectedLessonId) || (contentType === "upload" && !uploadedTextContent)}
-              className="mt-4 bg-[#84cc16] hover:bg-lime-600 text-black border-4 border-black py-4 rounded-2xl font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="mt-4 text-black border-4 border-black py-4 rounded-2xl font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-95"
+              style={{ backgroundColor: charColors.color }}
             >
               <Award className="w-5 h-5" />
               Build Exam Scenarios
@@ -537,8 +538,16 @@ export default function TestsTab({
             </div>
 
             {/* Cute Promo card */}
-            <div className="bg-[#acf847]/10 border-4 border-[#84cc16] rounded-3xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-              <span className="text-[10px] font-black uppercase text-[#84cc16] bg-black text-white px-2 py-0.5 rounded">Feynman Active Recall</span>
+            <div 
+              className="rounded-3xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] border-4"
+              style={{ backgroundColor: `${charColors.color}15`, borderColor: charColors.color }}
+            >
+              <span 
+                className="text-[10px] font-black uppercase bg-black text-white px-2 py-0.5 rounded"
+                style={{ color: charColors.color }}
+              >
+                Feynman Active Recall
+              </span>
               <h4 className={`text-sm font-black mt-2 uppercase ${isDark ? "text-white" : "text-black"}`}>Active testing beats reviews!</h4>
               <p className={`text-xs mt-1.5 leading-relaxed font-semibold ${isDark ? "text-gray-300" : "text-gray-650"}`}>
                 "Testing is a powerful tool to reinforce learning. When you force yourself to retrieve information in exam configurations, you patch critical gaps in record speeds!"
@@ -657,7 +666,8 @@ export default function TestsTab({
                   type="button"
                   onClick={revealAnswer}
                   disabled={selectedOption === null}
-                  className="bg-[#acf847] hover:bg-[#84cc16] text-black border-4 border-black px-6 py-3 font-black text-xs uppercase rounded-xl shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+                  className="text-black border-4 border-black px-6 py-3 font-black text-xs uppercase rounded-xl shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2 hover:brightness-95"
+                  style={{ backgroundColor: charColors.light }}
                 >
                   Confirm Answer
                   <Check className="w-4 h-4" />
@@ -666,7 +676,8 @@ export default function TestsTab({
                 <button
                   type="button"
                   onClick={nextQuestion}
-                  className="bg-[#84cc16] hover:bg-lime-600 text-black border-4 border-black px-6 py-3 font-black text-xs uppercase rounded-xl shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center gap-2"
+                  className="text-black border-4 border-black px-6 py-3 font-black text-xs uppercase rounded-xl shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center gap-2 hover:brightness-95"
+                  style={{ backgroundColor: charColors.color }}
                 >
                   {currentQuestionIndex + 1 === quiz.questions.length ? "Finish Test" : "Next Question"}
                   <ArrowRight className="w-4 h-4" />
@@ -745,15 +756,26 @@ export default function TestsTab({
 
               <div>
                 <span className="text-[10px] font-black uppercase text-gray-400">Percentage</span>
-                <p className="text-4xl font-black text-[#84cc16] mt-1">
+                <p 
+                  className="text-4xl font-black mt-1"
+                  style={{ color: charColors.color }}
+                >
                   {Math.round((score / quiz.questions.length) * 100)}%
                 </p>
               </div>
             </div>
 
             {/* Sam Message Comment based on performance */}
-            <div className="bg-emerald-50/20 border-l-4 border-[#84cc16] p-4 text-left max-w-xl rounded-r-2xl">
-              <p className="text-xs font-black uppercase text-emerald-600">Comment from Sam:</p>
+            <div 
+              className="p-4 text-left max-w-xl rounded-r-2xl border-l-4"
+              style={{ backgroundColor: `${charColors.color}12`, borderLeftColor: charColors.color }}
+            >
+              <p 
+                className="text-xs font-black uppercase"
+                style={{ color: charColors.color }}
+              >
+                Comment from {charColors.name}:
+              </p>
               <p className={`text-xs font-semibold leading-relaxed mt-1 ${isDark ? "text-gray-300" : "text-gray-700"}`}>
                 {(() => {
                   const pct = (score / quiz.questions.length) * 100;
@@ -774,7 +796,8 @@ export default function TestsTab({
             <div className="flex flex-col sm:flex-row gap-3 mt-4 w-full justify-center">
               <button
                 onClick={restartQuiz}
-                className="bg-[#acf847] hover:bg-[#84cc16] text-black border-4 border-black px-6 py-3.5 rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2"
+                className="text-black border-4 border-black px-6 py-3.5 rounded-xl font-black text-xs uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2 hover:brightness-95"
+                style={{ backgroundColor: charColors.light }}
               >
                 <RefreshCw className="w-4 h-4" />
                 Try Quiz Again

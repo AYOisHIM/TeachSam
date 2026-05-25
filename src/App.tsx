@@ -215,8 +215,22 @@ export default function App() {
       // Instantly refresh lessons to fetch the empty vault for the new account!
       await loadLessons(true, data.email);
 
+      // Trigger splash screen
+      const savedChar = localStorage.getItem("teachsam-selected-character");
+      const finalChar = (savedChar === "sam" || savedChar === "samantha" || savedChar === "samson" || savedChar === "sonny") 
+        ? savedChar 
+        : activeCharacterId;
+
+      setSplashReason("login");
+      setSplashCharacterId(finalChar);
+
       setShowAuthModal(false);
       clearAuthForm();
+
+      setTimeout(() => {
+        setSplashCharacterId(null);
+        setSplashReason(null);
+      }, 1800);
     } catch (err: any) {
       setAuthError(err.message || "An unexpected error occurred during signup.");
     } finally {
@@ -268,8 +282,22 @@ export default function App() {
         localStorage.setItem("teachsam-active-concept-id", data.activeConceptId);
       }
 
+      // Trigger splash screen
+      const savedChar = localStorage.getItem("teachsam-selected-character");
+      const finalChar = (savedChar === "sam" || savedChar === "samantha" || savedChar === "samson" || savedChar === "sonny") 
+        ? savedChar 
+        : activeCharacterId;
+
+      setSplashReason("login");
+      setSplashCharacterId(finalChar);
+
       setShowAuthModal(false);
       clearAuthForm();
+
+      setTimeout(() => {
+        setSplashCharacterId(null);
+        setSplashReason(null);
+      }, 1800);
     } catch (err: any) {
       setAuthError(err.message || "Invalid credentials.");
     } finally {
@@ -510,6 +538,10 @@ export default function App() {
     return "sam";
   });
 
+  // Full-screen high-fidelity splash screen when switching character or logging in
+  const [splashCharacterId, setSplashCharacterId] = useState<"sam" | "samantha" | "samson" | "sonny" | null>(null);
+  const [splashReason, setSplashReason] = useState<"switch" | "login" | null>(null);
+
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
 
   const availableCharacters = [
@@ -619,8 +651,15 @@ export default function App() {
   const activeTheme = availableThemeConfigs[activeCharacterId] || availableThemeConfigs.sam;
 
   const handleCharacterChange = (char: "sam" | "samantha" | "samson" | "sonny") => {
+    setSplashReason("switch");
+    setSplashCharacterId(char);
     setActiveCharacterId(char);
     localStorage.setItem("teachsam-selected-character", char);
+    handleNewTopicDiscussion(char);
+    setTimeout(() => {
+      setSplashCharacterId(null);
+      setSplashReason(null);
+    }, 1800);
   };
 
   useEffect(() => {
@@ -685,6 +724,10 @@ export default function App() {
 
         const targetLesson = data.find((l: any) => l.id === activeId);
         if (targetLesson) {
+          if (targetLesson.studiedWith) {
+            setActiveCharacterId(targetLesson.studiedWith);
+            localStorage.setItem("teachsam-selected-character", targetLesson.studiedWith);
+          }
           const savedConceptId = localStorage.getItem("teachsam-active-concept-id");
           const activeNode = targetLesson.concepts.find((c: ConceptNode) => c.status === "active") || targetLesson.concepts[0];
           const conceptId = (preserveStates && savedConceptId && targetLesson.concepts.some((c: any) => c.id === savedConceptId))
@@ -1065,13 +1108,16 @@ export default function App() {
     setUserInput("");
   };
 
-  const handleNewTopicDiscussion = async () => {
+  const handleNewTopicDiscussion = async (charId?: "sam" | "samantha" | "samson" | "sonny") => {
     try {
+      const selectedChar = charId || activeCharacterId;
       const resp = await fetch("/api/lessons/new-blank", {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           "x-user-email": currentUser?.email || ""
-        }
+        },
+        body: JSON.stringify({ studiedWith: selectedChar })
       });
       const newBlankLesson = await resp.json();
       
@@ -1091,10 +1137,17 @@ export default function App() {
         localStorage.setItem("teachsam-active-concept-id", firstNode);
       }
       
+      const charName = {
+        sam: "Sam",
+        samantha: "Samantha",
+        samson: "Samson",
+        sonny: "Sonny"
+      }[selectedChar] || "Sam";
+
       const initialGreeting: Message = {
         id: `greeting-${Date.now()}`,
         sender: "sam",
-        text: `Hello ${userName}! What subject or topic would you like to teach me today? Just name the topic (e.g., 'object-oriented programming', 'quantum gravity', 'mitosis', or drag 'n drop slides/textbooks here), and I'll adapt my brain completely to focus on your inputs!`,
+        text: `Hello ${userName}! I'm ${charName}. What subject or topic would you like to teach me today? Just name the topic (e.g., 'object-oriented programming', 'quantum gravity', 'mitosis', or drag 'n drop slides/textbooks here), and I'll adapt my brain completely to focus on your inputs!`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       
@@ -1360,7 +1413,13 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
             {/* Account widget */}
             {currentUser ? (
               <div className="flex items-center gap-2">
-                <span className={`px-3.5 py-1.5 rounded-full border flex items-center gap-1.5 text-xs font-bold shadow-sm ${theme === "dark" ? "bg-[#84cc16]/10 border-[#84cc16]/20 text-[#a3e635]" : "bg-lime-50 border-lime-200 text-[#4d7c0f]"}`}>
+                <span 
+                  className={`px-3.5 py-1.5 rounded-full border flex items-center gap-1.5 text-xs font-bold shadow-sm ${theme === "dark" ? "text-white" : "text-gray-800"}`}
+                  style={{
+                    backgroundColor: `${activeChar.color}1c`,
+                    borderColor: `${activeChar.color}33`,
+                  }}
+                >
                   🎓 {currentUser.username}
                 </span>
                 <button
@@ -1379,7 +1438,11 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                     clearAuthForm();
                     setShowAuthModal(true);
                   }}
-                  className="bg-[#84cc16] hover:bg-lime-500 text-black border border-lime-600 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-101 active:scale-99"
+                  className="text-black px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer hover:scale-101 active:scale-99 hover:brightness-105 border"
+                  style={{
+                    backgroundColor: activeChar.color,
+                    borderColor: `${activeChar.color}cc`,
+                  }}
                 >
                   Register
                 </button>
@@ -1411,7 +1474,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
         </header>
 
         {/* Mobile/Tablet Action Header */}
-        <header className={`lg:hidden px-4 md:px-8 py-3.5 border-b flex items-center justify-between sticky top-0 z-30 shadow-sm ${theme === "dark" ? "bg-[#121318]/95 border-zinc-800 backdrop-blur" : "bg-white/95 border-zinc-200 backdrop-blur"}`}>
+        <header className={`lg:hidden px-4 md:px-8 py-3.5 border-b flex items-center justify-between sticky top-0 z-[100] shadow-sm ${theme === "dark" ? "bg-[#121318]/95 border-zinc-800 backdrop-blur" : "bg-white/95 border-zinc-200 backdrop-blur"}`}>
           <div className="flex items-center gap-2 relative">
             <button 
               id="character-toggle-mobile"
@@ -1427,8 +1490,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
             {/* Mobile Switch Dropdown */}
             {mobileDropdownOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setMobileDropdownOpen(false)} />
-                <div className={`absolute top-[110%] left-0 z-50 border-4 border-black rounded-xl p-2 w-56 shadow-[4px_4px_0px_0px_#000] text-left select-none text-black ${theme === "dark" ? "bg-[#181922] text-white" : "bg-white text-black"}`}>
+                <div className="fixed inset-0 z-[110]" onClick={() => setMobileDropdownOpen(false)} />
+                <div className={`absolute top-[110%] left-0 z-[120] border-4 border-black rounded-xl p-2 w-56 shadow-[4px_4px_0px_0px_#000] text-left select-none text-black ${theme === "dark" ? "bg-[#181922] text-white" : "bg-white text-black"}`}>
                   <p className={`text-[9px] font-black uppercase tracking-wider px-2 pb-1.5 border-b mb-1 ${theme === "dark" ? "text-zinc-400 border-zinc-820" : "text-zinc-500 border-zinc-200"}`}>
                     Switch Study Buddy
                   </p>
@@ -2219,6 +2282,14 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {lessons.map((lesson) => {
                     const isCompleted = lesson.progress === 100;
+                    const studiedChar = availableCharacters.find(c => c.id === lesson.studiedWith) || activeChar;
+                    const charName = {
+                      sam: "Sam",
+                      samantha: "Samantha",
+                      samson: "Samson",
+                      sonny: "Sonny"
+                    }[studiedChar.id] || "Sam";
+
                     return (
                       <div 
                         key={lesson.id}
@@ -2230,8 +2301,9 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                               {lesson.subject}
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border border-black
-                                ${isCompleted ? "bg-[#acf847] text-black" : "bg-amber-100 text-amber-800"}`}
+                              <span 
+                                className="text-[10px] font-bold px-2 py-0.5 rounded border border-black text-black"
+                                style={isCompleted ? { backgroundColor: studiedChar.color } : { backgroundColor: "#fef3c7", color: "#92400e" }}
                               >
                                 {lesson.status}
                               </span>
@@ -2271,13 +2343,20 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                             </div>
                           </div>
 
-                          <div>
-                            <h4 className={`font-black text-base leading-tight ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
-                              {lesson.title}
-                            </h4>
-                            <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">
-                              ⏰ Added {lesson.dateAdded} • {lesson.concepts.length} concepts
-                            </p>
+                          <div className="flex items-start gap-2.5">
+                            {lesson.studiedWith && (
+                              <div className="shrink-0 flex items-center justify-center p-0.5 border border-black/30 rounded-lg bg-zinc-50 dark:bg-zinc-800 shadow-sm mt-0.5" title={`Studied with ${lesson.studiedWith.toUpperCase()}`}>
+                                <AvatarMascot expression="neutral" size="xs" character={lesson.studiedWith} />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h4 className={`font-black text-sm md:text-base leading-tight ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
+                                {lesson.title}
+                              </h4>
+                              <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">
+                                ⏰ Added {lesson.dateAdded} • {lesson.concepts.length} concepts
+                              </p>
+                            </div>
                           </div>
 
                           <div className="space-y-1 pt-2">
@@ -2287,15 +2366,15 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                             </div>
                             <div className="w-full bg-slate-100 h-2.5 rounded-full border-2 border-black overflow-hidden">
                               <div 
-                                className="bg-[#84cc16] h-full" 
-                                style={{ width: `${lesson.progress}%` }}
+                                className="h-full" 
+                                style={{ width: `${lesson.progress}%`, backgroundColor: studiedChar.color }}
                               />
                             </div>
                           </div>
                         </div>
 
                         <div className="mt-6 pt-4 border-t-2 border-dashed border-gray-200 flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-[#84cc16] flex items-center gap-1">
+                          <span className="text-xs font-extrabold flex items-center gap-1" style={{ color: studiedChar.color }}>
                             <FileText className="w-3.5 h-3.5" /> Textbook Ingested
                           </span>
                           
@@ -2311,9 +2390,10 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                                }
                                setCurrentTab("practice");
                              }}
-                             className="bg-[#84cc16] hover:bg-lime-600 text-black border-2 border-black px-3.5 py-1.5 rounded-xl font-black text-[11px] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+                             className="hover:brightness-105 text-black border-2 border-black px-3.5 py-1.5 rounded-xl font-black text-[11px] shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
+                             style={{ backgroundColor: studiedChar.color }}
                            >
-                            Teach Sam →
+                            Teach {charName} →
                           </button>
                         </div>
                       </div>
@@ -2889,7 +2969,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
       <div className={`lg:hidden fixed bottom-5 left-1/2 -translate-x-1/2 w-[95%] max-w-sm h-14 rounded-2xl border-4 border-black flex items-center justify-around z-30 shadow-[4px_4px_0px_0px_#000] select-none ${theme === "dark" ? "bg-[#121318]" : "bg-white"}`}>
         <button
           onClick={() => setCurrentTab("practice")}
-          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "practice" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "practice" ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          style={currentTab === "practice" ? { backgroundColor: activeChar.color } : undefined}
         >
           <GraduationCap className="w-4 h-4" />
           <span className="text-[7.5px] uppercase tracking-wider mt-0.5">Practice</span>
@@ -2897,7 +2978,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
 
         <button
           onClick={() => setCurrentTab("vault")}
-          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "vault" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "vault" ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          style={currentTab === "vault" ? { backgroundColor: activeChar.color } : undefined}
         >
           <Library className="w-4 h-4" />
           <span className="text-[7.5px] uppercase tracking-wider mt-0.5">Vault</span>
@@ -2905,7 +2987,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
 
         <button
           onClick={() => setCurrentTab("tests")}
-          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "tests" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "tests" ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          style={currentTab === "tests" ? { backgroundColor: activeChar.color } : undefined}
         >
           <ClipboardCheck className="w-4 h-4" />
           <span className="text-[7.5px] uppercase tracking-wider mt-0.5">Tests</span>
@@ -2913,7 +2996,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
 
         <button
           onClick={() => setCurrentTab("profile")}
-          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "profile" ? "bg-[#84cc16] text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          className={`flex flex-col items-center justify-center w-20 h-10 rounded-xl transition-all cursor-pointer ${currentTab === "profile" ? "text-black border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] font-extrabold text-[8px]" : "text-gray-400 font-bold text-[8px]"}`}
+          style={currentTab === "profile" ? { backgroundColor: activeChar.color } : undefined}
         >
           <User className="w-4 h-4" />
           <span className="text-[7.5px] uppercase tracking-wider mt-0.5">Profile</span>
@@ -3463,6 +3547,92 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
               )}
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Full-screen Character Selection & Login Splash Screen */}
+      <AnimatePresence>
+        {splashCharacterId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-zinc-950/95 backdrop-blur-md overflow-hidden select-none text-white font-sans"
+          >
+            {/* Ambient colorful glow matching character */}
+            <div 
+              className="absolute w-[400px] h-[400px] rounded-full filter blur-[100px] opacity-25 animate-pulse transition-all duration-1000"
+              style={{
+                backgroundColor: availableCharacters.find(c => c.id === splashCharacterId)?.color || "#84cc16"
+              }}
+            />
+
+            <div className="relative z-10 flex flex-col items-center text-center px-6">
+              {/* Massive scale animated Mascot */}
+              <motion.div
+                initial={{ scale: 0.5, rotate: -15, y: 50 }}
+                animate={{ scale: 1, rotate: 0, y: 0 }}
+                transition={{ type: "spring", stiffness: 120, damping: 12 }}
+                className="mb-8"
+              >
+                <div className="p-4 bg-white dark:bg-zinc-900 rounded-full border-8 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                  <AvatarMascot 
+                    expression="amazed" 
+                    size="lg" 
+                    character={splashCharacterId} 
+                  />
+                </div>
+              </motion.div>
+
+              {/* Character Details in Neo-brutalist badge */}
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="inline-flex items-center gap-2 border-4 border-black text-black px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-[4px_4px_0px_0px_#000]"
+                style={{
+                  backgroundColor: availableCharacters.find(c => c.id === splashCharacterId)?.color || "#84cc16"
+                }}
+              >
+                <span className="text-lg">
+                  {availableCharacters.find(c => c.id === splashCharacterId)?.emoji}
+                </span>
+                <span>
+                  Study Buddy: {availableCharacters.find(c => c.id === splashCharacterId)?.name}
+                </span>
+              </motion.div>
+
+              {/* Status or Reason text */}
+              <motion.h2 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-2xl md:text-3xl font-black uppercase mt-6 tracking-tight text-white"
+              >
+                {splashReason === "login" 
+                  ? "Initializing Brain Sync!" 
+                  : "Calibrating Neural Net!"}
+              </motion.h2>
+
+              <motion.p 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.5 }}
+                className="text-[10px] md:text-xs font-bold text-zinc-400 mt-2 max-w-xs uppercase tracking-wider leading-relaxed"
+              >
+                {splashReason === "login"
+                  ? `Loading saved course models & sync parameters...`
+                  : `Injecting state rules to ${availableCharacters.find(c => c.id === splashCharacterId)?.name}'s cognitive parser...`}
+              </motion.p>
+
+              {/* Loader dots */}
+              <div className="flex gap-2 mt-8 justify-center">
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-black animate-bounce [animation-delay:-0.3s]" style={{ backgroundColor: availableCharacters.find(c => c.id === splashCharacterId)?.color }} />
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-black animate-bounce [animation-delay:-0.15s]" style={{ backgroundColor: availableCharacters.find(c => c.id === splashCharacterId)?.color }} />
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-black animate-bounce" style={{ backgroundColor: availableCharacters.find(c => c.id === splashCharacterId)?.color }} />
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

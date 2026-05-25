@@ -105,7 +105,7 @@ export default function SideMenu({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
                           <p className="text-xs font-black">{char.name}</p>
-                          {isCur && <span className="text-[8px] font-bold uppercase bg-lime-400 text-black px-1 rounded">Active</span>}
+                          {isCur && <span className="text-[8px] font-bold uppercase text-black px-1 rounded" style={{ backgroundColor: char.color }}>Active</span>}
                         </div>
                         <p className={`text-[9px] truncate ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>{char.flow}</p>
                       </div>
@@ -131,9 +131,7 @@ export default function SideMenu({
                   onClick={() => onTabChange(tab.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all border select-none cursor-pointer
                     ${isActive 
-                      ? isDark
-                        ? `${activeChar.activeBg} ${activeChar.textClass} shadow-sm`
-                        : `${activeChar.activeBg} ${activeChar.textClass} shadow-sm`
+                      ? `${activeChar.activeBg} ${activeChar.textClass} shadow-sm`
                       : isDark
                         ? "bg-transparent text-gray-400 border-transparent hover:text-white hover:bg-[#181920]/60"
                         : "bg-transparent text-gray-600 border-transparent hover:text-black hover:bg-gray-50"
@@ -166,8 +164,7 @@ export default function SideMenu({
           <p className={`text-xs font-bold leading-snug ${isDark ? "text-zinc-250" : "text-zinc-800"}`}>
             Need help or got a complaint? Tell Ayo!
           </p>
-          <span className={`text-[10px] font-extrabold flex items-center gap-1 mt-2 transition-colors
-            ${isDark ? "text-[#a3e635] hover:text-[#84cc16]" : "text-[#4d7c0f] hover:text-[#3f620a]"}`}>
+          <span className={`text-[10px] font-extrabold flex items-center gap-1 mt-2 transition-colors ${activeChar.textClass}`}>
             Write message directly →
           </span>
         </div>

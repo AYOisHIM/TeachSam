@@ -17,6 +17,7 @@ export interface Lesson {
   dateAdded: string;
   numPages?: number;
   concepts: ConceptNode[];
+  studiedWith?: "sam" | "samantha" | "samson" | "sonny";
 }
 
 export interface Message {

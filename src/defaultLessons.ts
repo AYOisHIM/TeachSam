@@ -17,6 +17,7 @@ This stage takes place in the stroma of chloroplasts. It does not require light 
     progress: 45,
     dateAdded: "2 days ago",
     numPages: 14,
+    studiedWith: "sam",
     concepts: [
       {
         id: "chlorophyll-capture",
@@ -72,6 +73,7 @@ Physical systems do not have definite properties prior to measurement. Instead, 
     progress: 30,
     dateAdded: "Yesterday",
     numPages: 8,
+    studiedWith: "sonny",
     concepts: [
       {
         id: "wave-vs-particle",
@@ -114,6 +116,7 @@ Equilibrium occurs at the intersection of the demand and supply curves. At this 
     progress: 0,
     dateAdded: "1 week ago",
     numPages: 5,
+    studiedWith: "samantha",
     concepts: [
       {
         id: "law-of-demand",

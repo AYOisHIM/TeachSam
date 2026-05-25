@@ -362,7 +362,7 @@ app.post("/api/lessons/parse-upload", async (req: express.Request, res: express.
 
 // 2. Generate concept nodes for custom transcripts / uploads
 app.post("/api/lessons/generate", async (req, res) => {
-  const { title, subject, content } = req.body;
+  const { title, subject, content, studiedWith } = req.body;
 
   if (!title || !content) {
     return res.status(400).json({ error: "Title and textbook content are required!" });
@@ -403,7 +403,8 @@ app.post("/api/lessons/generate", async (req, res) => {
         progress: 0,
         dateAdded: "Just now",
         numPages: Math.ceil(content.length / 800),
-        concepts: mockConcepts
+        concepts: mockConcepts,
+        studiedWith: studiedWith || "sam"
       };
       const email = req.headers["x-user-email"] as string | undefined;
       const lessons = getUserLessons(email);
@@ -460,7 +461,8 @@ ${content}`,
       progress: 0,
       dateAdded: "Just now",
       numPages: Math.ceil(content.length / 750),
-      concepts
+      concepts,
+      studiedWith: studiedWith || "sam"
     };
 
     const email = req.headers["x-user-email"] as string | undefined;
@@ -478,6 +480,7 @@ ${content}`,
 // 3. Reset/Reset default lessons to initial state
 app.post("/api/lessons/new-blank", (req, res) => {
   const email = req.headers["x-user-email"] as string | undefined;
+  const { studiedWith } = req.body || {};
   const newBlankLesson = {
     id: `blank-${Date.now()}`,
     title: "New Topic Study",
@@ -495,7 +498,8 @@ app.post("/api/lessons/new-blank", (req, res) => {
         status: "active" as const,
         connections: []
       }
-    ]
+    ],
+    studiedWith: studiedWith || "sam"
   };
   const lessons = getUserLessons(email);
   lessons.unshift(newBlankLesson);
@@ -823,7 +827,8 @@ Break down this summary into exactly 3 to 4 sequential concept path nodes for a 
         progress: 0,
         dateAdded: "Just now",
         numPages: Math.ceil(newContent.length / 750),
-        concepts
+        concepts,
+        studiedWith: characterId || "sam"
       };
 
       // Clear out any blank placeholder templates
@@ -1136,6 +1141,7 @@ ${chatHistoryFormatted}`;
         lessons[lessonIndex].concepts = updatedConcepts;
         lessons[lessonIndex].progress = newProgress;
         lessons[lessonIndex].status = newProgress === 100 ? "Mastered" : "In Progress";
+        lessons[lessonIndex].studiedWith = characterId || "sam";
 
         const newlyActive = updatedConcepts.find(c => c.status === "active") || updatedConcepts[updatedConcepts.length - 1];
         saveUserLessons(email, lessons, lessonId, newlyActive?.id || "");
