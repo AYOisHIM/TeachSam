@@ -502,7 +502,8 @@ app.post("/api/lessons/new-blank", (req, res) => {
     studiedWith: studiedWith || "sam"
   };
   const lessons = getUserLessons(email);
-  lessons.unshift(newBlankLesson);
+  // Do NOT save/unshift the blank template to the lessons DB array, keeping the vault pristine!
+  // Only save active lesson pointers so structural routing stays synchronized:
   saveUserLessons(email, lessons, newBlankLesson.id, "awaiting-user-input");
   res.json(newBlankLesson);
 });
@@ -525,7 +526,27 @@ app.post("/api/chat/evaluate", async (req, res) => {
   const lessons = getUserLessons(email);
 
   let currentLesson = lessons.find(l => l.id === lessonId);
-  if (!currentLesson) {
+  if (!currentLesson && lessonId && (lessonId.startsWith("blank-") || lessonId === "blank-placeholder")) {
+    // Construct in-memory temporary blank lesson template so dynamic topic mindmap generation works flawlessly!
+    currentLesson = {
+      id: lessonId,
+      title: "New Topic Study",
+      subject: "Awaiting Input",
+      content: "Please tell Sam what topic you want to study in the chat input or upload your files! Once you tell Sam what to study, he will automatically build an interactive learning roadmap.",
+      status: "New" as const,
+      progress: 0,
+      concepts: [
+        {
+          id: "awaiting-user-input",
+          label: "Provide a Topic",
+          description: "Waiting for you to specify a topic in the chat below!",
+          status: "active" as const,
+          connections: []
+        }
+      ],
+      studiedWith: characterId || "sam"
+    };
+  } else if (!currentLesson) {
     currentLesson = lessons[0];
   }
 
@@ -1175,7 +1196,26 @@ app.post("/api/chat/explain", async (req, res) => {
   const lessons = getUserLessons(email);
   
   let currentLesson = lessons.find(l => l.id === lessonId);
-  if (!currentLesson) {
+  if (!currentLesson && lessonId && (lessonId.startsWith("blank-") || lessonId === "blank-placeholder")) {
+    currentLesson = {
+      id: lessonId,
+      title: "New Topic Study",
+      subject: "Awaiting Input",
+      content: "Please tell Sam what topic you want to study in the chat input or upload your files! Once you tell Sam what to study, he will automatically build an interactive learning roadmap.",
+      status: "New" as const,
+      progress: 0,
+      concepts: [
+        {
+          id: "awaiting-user-input",
+          label: "Provide a Topic",
+          description: "Waiting for you to specify a topic in the chat below!",
+          status: "active" as const,
+          connections: []
+        }
+      ],
+      studiedWith: "sam"
+    };
+  } else if (!currentLesson) {
     currentLesson = lessons[0];
   }
   

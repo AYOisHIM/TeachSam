@@ -542,6 +542,9 @@ export default function App() {
   const [splashCharacterId, setSplashCharacterId] = useState<"sam" | "samantha" | "samson" | "sonny" | null>(null);
   const [splashReason, setSplashReason] = useState<"switch" | "login" | null>(null);
 
+  // Custom dialog state to confirm study material deletions beautifully
+  const [lessonToDelete, setLessonToDelete] = useState<any | null>(null);
+
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
 
   const availableCharacters = [
@@ -2280,7 +2283,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
 
                 {/* Card grids of lessons */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {lessons.map((lesson) => {
+                  {lessons.filter(l => !l.id.startsWith("blank-") && l.title !== "New Topic Study").map((lesson) => {
                     const isCompleted = lesson.progress === 100;
                     const studiedChar = availableCharacters.find(c => c.id === lesson.studiedWith) || activeChar;
                     const charName = {
@@ -2308,32 +2311,9 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                                 {lesson.status}
                               </span>
                               <button
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation();
-                                  if (confirm(`Are you sure you want to delete "${lesson.title}" study roadmap?`)) {
-                                    try {
-                                      const resp = await fetch(`/api/lessons/${lesson.id}`, {
-                                        method: "DELETE",
-                                        headers: {
-                                          "x-user-email": currentUser?.email || ""
-                                        }
-                                      });
-                                      if (resp.ok) {
-                                        const result = await resp.json();
-                                        setLessons(result.lessons);
-                                        // If deleted the active lesson, reset select
-                                        if (activeLessonId === lesson.id && result.lessons.length > 0) {
-                                          setActiveLessonId(result.lessons[0].id);
-                                        } else if (result.lessons.length === 0) {
-                                          setActiveLessonId(null);
-                                        }
-                                      } else {
-                                        alert("Failed to delete study material.");
-                                      }
-                                    } catch (err) {
-                                      console.error("Error deleting:", err);
-                                    }
-                                  }
+                                  setLessonToDelete(lesson);
                                 }}
                                 title="Delete study material"
                                 className="p-1 rounded-md border-2 border-black bg-rose-500 hover:bg-rose-400 text-white shadow-[1px_1px_0px_0px_#000] active:translate-x-[0.5px] active:translate-y-[0.5px] active:shadow-none transition-all cursor-pointer flex items-center justify-center"
@@ -3633,6 +3613,93 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {lessonToDelete && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-fade-in text-black">
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white border-4 border-black rounded-3xl p-6 max-w-md w-full shadow-[6px_6px_0px_0px_#000] relative text-black"
+            >
+              <button
+                onClick={() => setLessonToDelete(null)}
+                className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 text-black border-2 border-black p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center padding-0"
+              >
+                <X className="w-4 h-4 text-black" />
+              </button>
+
+              <div className="flex items-center gap-2.5 mb-2.5">
+                <div className="bg-rose-100 p-2.5 border-2 border-black rounded-xl text-rose-600 flex items-center justify-center">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-tight text-red-650 leading-none">
+                    Confirm Deletion
+                  </h3>
+                  <p className="text-[9px] font-black uppercase text-gray-400 mt-1">
+                    Irreversible Action
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <p className="text-xs font-semibold leading-relaxed text-gray-755">
+                  Are you sure you want to delete the study material <strong className="font-extrabold text-black">"{lessonToDelete.title}"</strong> from your vault?
+                </p>
+                <p className="text-[10px] font-bold text-rose-600 bg-rose-50 border-2 border-rose-200 p-2 rounded-xl leading-relaxed">
+                  ⚠️ This will permanently remove all learning nodes, textbooks, chat histories, and test records associated with this study topic.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setLessonToDelete(null)}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-black border-2 border-black py-2 rounded-xl font-black text-xs shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (lessonToDelete) {
+                      const lessonId = lessonToDelete.id;
+                      try {
+                        const resp = await fetch(`/api/lessons/${lessonId}`, {
+                          method: "DELETE",
+                          headers: {
+                            "x-user-email": currentUser?.email || ""
+                          }
+                        });
+                        if (resp.ok) {
+                          const result = await resp.json();
+                          setLessons(result.lessons);
+                          // If deleted the active lesson, reset select
+                          if (activeLessonId === lessonId && result.lessons.length > 0) {
+                            setActiveLessonId(result.lessons[0].id);
+                          } else if (result.lessons.length === 0) {
+                            setActiveLessonId(null);
+                          }
+                        } else {
+                          alert("Failed to delete study material.");
+                        }
+                      } catch (err) {
+                        console.error("Error deleting:", err);
+                      } finally {
+                        setLessonToDelete(null);
+                      }
+                    }
+                  }}
+                  className="flex-1 bg-rose-500 hover:bg-rose-600 text-white border-2 border-black py-2 rounded-xl font-black text-xs shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer text-center"
+                >
+                  Yes, Delete!
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
