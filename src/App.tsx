@@ -47,6 +47,18 @@ import {
 } from "./gmailService";
 import { User as FirebaseUser } from "firebase/auth";
 
+const safeReadJson = async (res: Response, errorMessage = "Request failed") => {
+  const contentType = res.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error(`Server API returned an invalid response (non-JSON). If you are running the app on a static hosting environment like Vercel, the back-end Node.js service is not active there. Please use our real, persistent AI Studio preview environment to create accounts or write study roadmaps!`);
+  }
+  try {
+    return await res.json();
+  } catch {
+    throw new Error(`${errorMessage} (Unable to parse response as JSON)`);
+  }
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState<"practice" | "vault" | "tests" | "profile">("practice");
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -202,7 +214,7 @@ export default function App() {
         })
       });
 
-      const data = await res.json();
+      const data = await safeReadJson(res, "Could not register account.");
       if (!res.ok) {
         throw new Error(data.error || "Could not register account.");
       }
@@ -259,7 +271,7 @@ export default function App() {
         })
       });
 
-      const data = await res.json();
+      const data = await safeReadJson(res, "Authentication failed.");
       if (!res.ok) {
         throw new Error(data.error || "Authentication failed.");
       }
