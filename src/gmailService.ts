@@ -2,6 +2,8 @@ import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   onAuthStateChanged, 
   User 
@@ -19,13 +21,50 @@ provider.addScope("https://www.googleapis.com/auth/gmail.send");
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
+let isCheckingRedirect = true;
 
-// Initialize Google Gmail Auth state listener
+// Initialize Google Gmail Auth state listener with redirect recovery
 export const initGmailAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Check for redirect sign-in outcome on application start
+  getRedirectResult(googleAuth)
+    .then((result) => {
+      isCheckingRedirect = false;
+      if (result) {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          cachedAccessToken = credential.accessToken;
+          if (onAuthSuccess) {
+            onAuthSuccess(result.user, credential.accessToken);
+          }
+          return;
+        }
+      }
+      
+      const user = googleAuth.currentUser;
+      if (user) {
+        if (cachedAccessToken) {
+          if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+        } else {
+          if (onAuthFailure) onAuthFailure();
+        }
+      } else {
+        if (onAuthFailure) onAuthFailure();
+      }
+    })
+    .catch((error) => {
+      isCheckingRedirect = false;
+      console.error("Redirect check failed or cancelled:", error);
+      if (onAuthFailure) onAuthFailure();
+    });
+
   return onAuthStateChanged(googleAuth, async (user: User | null) => {
+    if (isCheckingRedirect) {
+      // Defer state updates until redirect result parsing has stabilized
+      return;
+    }
     if (user) {
       if (cachedAccessToken) {
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
@@ -53,6 +92,19 @@ export const loginWithGmail = async (): Promise<{ user: User; accessToken: strin
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error) {
     console.error("Gmail Sign In error:", error);
+    throw error;
+  } finally {
+    isSigningIn = false;
+  }
+};
+
+// Alternative Redirect-based Google auth (extremely resilient)
+export const loginWithGmailRedirect = async (): Promise<void> => {
+  try {
+    isSigningIn = true;
+    await signInWithRedirect(googleAuth, provider);
+  } catch (error) {
+    console.error("Gmail Redirect Sign In error:", error);
     throw error;
   } finally {
     isSigningIn = false;

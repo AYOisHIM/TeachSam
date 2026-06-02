@@ -40,6 +40,7 @@ import { Lesson, ConceptNode, Message, DailyGoal, BrainStats } from "./types";
 import { 
   initGmailAuth, 
   loginWithGmail, 
+  loginWithGmailRedirect,
   logoutGmail, 
   fetchLatestEmails, 
   sendGmailMessage, 
@@ -889,7 +890,71 @@ export default function App() {
 
   const handleSendMessage = async (customText?: string) => {
     const textToSend = customText || userInput;
-    if (!textToSend.trim() || !activeLessonId) return;
+    if (!textToSend.trim()) return;
+
+    if (!activeLessonId) {
+      setUserInput("");
+      setIsEvaluating(true);
+      setMascotExpression("thinking");
+      try {
+        const topicTitle = textToSend.split("\n")[0].substring(0, 50).trim();
+        const contentBody = textToSend.length > 50 ? textToSend : `A comprehensive study roadmap and complete concept explanations for ${textToSend}.`;
+        
+        const resp = await fetch("/api/lessons/generate", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "x-user-email": currentUser?.email || ""
+          },
+          body: JSON.stringify({
+            title: topicTitle,
+            subject: "General Study",
+            content: contentBody
+          })
+        });
+
+        if (!resp.ok) {
+          const errBody = await resp.json().catch(() => ({}));
+          throw new Error(errBody.error || "Could not construct your study map automatically.");
+        }
+
+        const createdLesson = await resp.json();
+        
+        await loadLessons();
+        
+        setActiveLessonId(createdLesson.id);
+        localStorage.setItem("teachsam-active-lesson-id", createdLesson.id);
+        
+        const firstNode = createdLesson.concepts[0]?.id || "";
+        setActiveConceptId(firstNode);
+        if (firstNode) {
+          localStorage.setItem("teachsam-active-concept-id", firstNode);
+        }
+
+        const initialGreeting: Message = {
+          id: `greeting-${Date.now()}`,
+          sender: "sam",
+          text: `Awesome! I've loaded your reference materials on **${createdLesson.title}** and structured a sequential 3-5 milestone study progress map in the right-hand panel for you!\n\nLet's start off with our first concept milestone: **${createdLesson.concepts[0]?.label}**.\n\nCould you explain in your own words what you understand about this concept? I will evaluate your explanation and give you a visual roadmap update!`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        
+        setChatHistories(prev => ({
+          ...prev,
+          [createdLesson.id]: [initialGreeting]
+        }));
+        setMascotExpression("happy");
+        
+        setDailyGoals(prev => prev.map(g => g.id === "upload-1" ? { ...g, completed: true } : g));
+
+      } catch (err: any) {
+        console.error("FAILED TO GENERATE TOPIC INLINE:", err);
+        alert(err.message || "Failed to make study material. Please try again!");
+        setMascotExpression("confused");
+      } finally {
+        setIsEvaluating(false);
+      }
+      return;
+    }
 
     const userMsg: Message = {
       id: `user-${Date.now()}`,
@@ -1177,7 +1242,6 @@ export default function App() {
     }
   };
 
-  // Process selected study file and feed to chat dynamically
   const processSelectedFile = async (file: File) => {
     setIsParsingFile(true);
     setMascotExpression("thinking");
@@ -1186,6 +1250,24 @@ export default function App() {
       const reader = new FileReader();
       
       const fileParsedPromise = new Promise<{ text: string }>((resolve, reject) => {
+        const lowerName = file.name.toLowerCase();
+        const isPlain = file.type === "text/plain" || lowerName.endsWith(".txt") || lowerName.endsWith(".md");
+        
+        if (isPlain) {
+          const textReader = new FileReader();
+          textReader.onload = (e) => {
+            const textResult = e.target?.result as string;
+            if (textResult) {
+              resolve({ text: textResult });
+            } else {
+              reject(new Error("Empty text file content."));
+            }
+          };
+          textReader.onerror = () => reject(new Error("Error reading plain text file."));
+          textReader.readAsText(file);
+          return;
+        }
+
         reader.onload = async (e) => {
           try {
             const resultString = e.target?.result as string;
@@ -1208,13 +1290,12 @@ export default function App() {
               })
             });
 
+            const parsedResult = await safeReadJson(response, "Server could not parse file.");
             if (!response.ok) {
-              const errBody = await response.json().catch(() => ({}));
-              reject(new Error(errBody.error || "Server could not parse file"));
+              reject(new Error(parsedResult.error || "Server could not parse file."));
               return;
             }
 
-            const parsedResult = await response.json();
             resolve({ text: parsedResult.text });
           } catch (innerErr) {
             reject(innerErr);
@@ -1245,12 +1326,11 @@ export default function App() {
         })
       });
 
+      const createdLesson = await safeReadJson(genResp, "Failed to generate dynamic concept path nodes.");
       if (!genResp.ok) {
-        const errBody = await genResp.json().catch(() => ({}));
-        throw new Error(errBody.error || "Failed to generate dynamic concept path nodes.");
+        throw new Error(createdLesson.error || "Failed to generate dynamic concept path nodes.");
       }
 
-      const createdLesson = await genResp.json();
       await loadLessons();
 
       // Configure newly created lesson states instantly
@@ -1268,6 +1348,7 @@ export default function App() {
         id: `sam-uploaded-${Date.now()}`,
         sender: "sam",
         text: `Woah! You uploaded "${file.name}"! I've loaded those notes and mapped out some core concepts in the mindmap on the right.
+Profile tab holds your active stats!
 
 Let's do this! What can you tell me about the first concept: **"${createdLesson.concepts[0]?.label || "Introduction"}"**? I'm ready to learn!`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -1296,6 +1377,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
     const file = event.target.files?.[0];
     if (file) {
       await processSelectedFile(file);
+      // Reset input value so same file can be uploaded again if needed
+      event.target.value = "";
     }
   };
 
@@ -1760,10 +1843,32 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                         );
                       })
                     ) : (
-                      <div className={`h-full flex flex-col items-center justify-center p-8 text-center border border-dashed rounded-3xl ${theme === "dark" ? "bg-[#101115] border-zinc-800 text-gray-400" : "bg-slate-50 border-gray-200 text-zinc-500"}`}>
-                        <BookOpen className="w-12 h-12 text-gray-300 mb-2" />
-                        <p className="font-extrabold text-sm">No Lesson active right now.</p>
-                        <p className="text-xs font-bold text-gray-450 mt-1">Visit the Vault tab with textbook chapters to initialize a Feynman quiz!</p>
+                      <div className={`h-full flex flex-col items-center justify-center p-8 text-center border border-dashed rounded-3xl ${theme === "dark" ? "bg-[#101115] border-zinc-800 text-zinc-400" : "bg-slate-50 border-gray-200 text-zinc-600"}`}>
+                        <BookOpen className="w-12 h-12 text-gray-300 mb-2.5" />
+                        <p className="font-extrabold text-sm text-zinc-850 dark:text-gray-200">No Lesson active right now.</p>
+                        <p className="text-xs font-bold text-gray-450 mt-1.5 max-w-sm">
+                          Don't worry! Tell Sam what topic you want to learn right in the chat input below (e.g. "Photosynthesis") or click one of our interactive suggested topics to dynamically build a beautiful study map and start chatting instantly!
+                        </p>
+                        
+                        {/* Prompt-to-Study Suggestion Chips */}
+                        <div className="mt-5 flex flex-wrap justify-center gap-2 max-w-md">
+                          {["Cell Mitosis", "Quantum Physics", "Photosynthesis Stages", "Javascript Event Loop", "Supply and Demand"].map((topic) => (
+                            <button
+                              key={topic}
+                              type="button"
+                              onClick={() => {
+                                handleSendMessage(topic);
+                              }}
+                              disabled={isEvaluating}
+                              className={`text-[10px] font-extrabold uppercase px-3 py-1.5 rounded-xl border transition-all cursor-pointer shadow-sm hover:scale-95 disabled:opacity-50 active:scale-90
+                                ${theme === "dark" 
+                                  ? "bg-zinc-800 hover:bg-zinc-750 border-zinc-700 text-amber-400 font-black shadow-[2px_2px_0px_0px_#000]" 
+                                  : "bg-amber-50 hover:bg-amber-105 border-amber-200 text-amber-800 font-extrabold shadow-[2px_2px_0px_0px_#f59e0b]"}`}
+                            >
+                              💡 {topic}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -1833,8 +1938,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleSendMessage();
                         }}
-                        disabled={isEvaluating || !activeLessonId}
-                        placeholder={activeLesson ? `Explain: ${activeLesson.concepts.find(c => c.id === activeConceptId)?.label || "the concept"} here...` : "Select a topic first!"}
+                        disabled={isEvaluating}
+                        placeholder={activeLesson ? `Explain: ${activeLesson.concepts.find(c => c.id === activeConceptId)?.label || "the concept"} here...` : "Type a topic (e.g. Mitosis, Great Gatsby) to generate custom study notes & start chatting!"}
                         className={`w-full border font-semibold text-xs py-3 px-4 rounded-xl outline-none transition-all placeholder-zinc-400 focus:ring-2 ${activeTheme.ringTheme20} ${theme === "dark" ? `bg-[#121318] border-zinc-800 text-white ${activeTheme.borderFocusWithin50}` : `bg-white border-zinc-200 text-black ${activeTheme.focusBorder}`}`}
                       />
                     </div>
@@ -1842,7 +1947,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                     <button
                       id="send-msg-btn"
                       onClick={() => handleSendMessage()}
-                      disabled={!userInput.trim() || isEvaluating || !activeLessonId}
+                      disabled={!userInput.trim() || isEvaluating}
                       className={`text-black px-4.5 py-3 rounded-xl font-bold border shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 text-xs ${activeTheme.bgTheme} ${activeTheme.bgThemeHover} border-black/40`}
                     >
                       <span className="hidden sm:inline font-bold uppercase text-[10px] tracking-wide">Send</span>
@@ -2268,7 +2373,14 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                       <p className="text-xs text-gray-400 font-semibold mt-1">
                         PDFs, Word .docx, or Text files are supported!
                       </p>
-                      <button className="bg-emerald-50 text-[#84cc16] text-xs font-black uppercase px-4 py-2.5 rounded-full border-2 border-[#84cc16] mt-4 flex items-center gap-1.5 shadow-[1.5px_1.5px_0px_0px_#84cc16]">
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        className="bg-emerald-50 text-[#84cc16] text-xs font-black uppercase px-4 py-2.5 rounded-full border-2 border-[#84cc16] mt-4 flex items-center gap-1.5 shadow-[1.5px_1.5px_0px_0px_#84cc16]"
+                      >
                         <Plus className="w-3.5 h-3.5" />
                         Choose raw file
                       </button>
@@ -2512,31 +2624,47 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                         Disconnect Gmail
                       </button>
                     ) : (
-                      <button
-                        onClick={async () => {
-                          setGmailAuthError(null);
-                          try {
-                            const res = await loginWithGmail();
-                            if (res) {
-                              setGmailUser(res.user);
-                              setGmailToken(res.accessToken);
-                              loadGmailInbox(res.accessToken);
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                          onClick={async () => {
+                            setGmailAuthError(null);
+                            try {
+                              const res = await loginWithGmail();
+                              if (res) {
+                                setGmailUser(res.user);
+                                setGmailToken(res.accessToken);
+                                loadGmailInbox(res.accessToken);
+                              }
+                            } catch (err: any) {
+                              console.error("Popup Error detail:", err);
+                              setGmailAuthError(err.message || String(err));
                             }
-                          } catch (err: any) {
-                            console.error("Popup Error detail:", err);
-                            setGmailAuthError(err.message || String(err));
-                          }
-                        }}
-                        className="bg-white hover:bg-zinc-50 text-black border-2 border-black px-4 py-1.5 rounded-full text-xs font-black shadow-[2px_2px_0px_0px_#000] flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24">
-                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z"/>
-                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.96 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                        </svg>
-                        Connect Google Account
-                      </button>
+                          }}
+                          className="bg-white hover:bg-zinc-50 text-black border-2 border-black px-4 py-1.5 rounded-full text-xs font-black shadow-[2px_2px_0px_0px_#000] flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z"/>
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.96 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                          </svg>
+                          Connect Google Account (Popup)
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setGmailAuthError(null);
+                            try {
+                              await loginWithGmailRedirect();
+                            } catch (err: any) {
+                              console.error("Redirect Error detail:", err);
+                              setGmailAuthError(err.message || String(err));
+                            }
+                          }}
+                          className="bg-sky-50 hover:bg-sky-100 text-sky-950 border-2 border-sky-400 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-[2px_2px_0px_0px_#38bdf8]"
+                        >
+                          🔄 Connect via Redirect (Fail-safe)
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -2549,8 +2677,8 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                             Browser Sandbox Security Limit Intercepted
                           </h4>
                           <p className="mt-1 font-medium leading-relaxed text-[11px] text-amber-900/90">
-                            Because you are testing the app embedded inside the AI Studio review frame (iframe), 
-                            your browser blocks standard cross-origin popup operations and third-party security cookies.
+                            Because you are testing the app embedded inside the AI Studio review frame (iframe) or your browser has strict anti-popup settings, 
+                            your browser blocks standard cross-origin popup operations.
                           </p>
                         </div>
                       </div>
@@ -2558,13 +2686,25 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                       <div className="bg-amber-100/80 border border-amber-300 p-3 rounded-xl space-y-1.5 text-[10.5px] font-bold text-amber-900">
                         <p className="underline uppercase tracking-wide text-[9px] font-black text-amber-850">To connect your Gmail account successfully:</p>
                         <ol className="list-decimal list-inside space-y-1 pl-1">
-                          <li>Click <strong className="font-black">Open App in New Tab ↗</strong> below.</li>
-                          <li>In the new standalone window, navigate to the <strong className="font-semibold">Profile</strong> tab.</li>
-                          <li>Click <strong className="font-semibold">Connect Google Account</strong> to grant read-only syllabus transcripts and study note access flawlessly!</li>
+                          <li>Click <strong className="font-black">Use Redirect Method Now</strong> below (this uses a fail-safe top-level redirect that fully avoids popup blockers!).</li>
+                          <li>Alternatively, click <strong className="font-black">Open App in New Tab ↗</strong> to grant read-only syllabus transcripts and study note access in a standalone window.</li>
                         </ol>
                       </div>
 
-                      <div className="flex items-center gap-2 pt-1 font-black">
+                      <div className="flex flex-wrap items-center gap-2.5 pt-1 font-black">
+                        <button
+                          onClick={async () => {
+                            setGmailAuthError(null);
+                            try {
+                              await loginWithGmailRedirect();
+                            } catch (err: any) {
+                              setGmailAuthError(err.message || String(err));
+                            }
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>🔄 Use Redirect Method Now</span>
+                        </button>
                         <a
                           href={window.location.href}
                           target="_blank"
