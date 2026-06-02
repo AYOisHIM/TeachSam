@@ -37,16 +37,7 @@ import SideMenu from "./components/SideMenu";
 import AvatarMascot from "./components/AvatarMascot";
 import TestsTab from "./components/TestsTab";
 import { Lesson, ConceptNode, Message, DailyGoal, BrainStats } from "./types";
-import { 
-  initGmailAuth, 
-  loginWithGmail, 
-  loginWithGmailRedirect,
-  logoutGmail, 
-  fetchLatestEmails, 
-  sendGmailMessage, 
-  GmailMessage 
-} from "./gmailService";
-import { User as FirebaseUser } from "firebase/auth";
+
 
 const safeReadJson = async (res: Response, errorMessage = "Request failed") => {
   const contentType = res.headers.get("content-type");
@@ -121,19 +112,7 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState<string>("");
   const [authPassword, setAuthPassword] = useState<string>("");
 
-  // --- GMAIL COMPANION INTEGRATION STATES ---
-  const [gmailUser, setGmailUser] = useState<FirebaseUser | null>(null);
-  const [gmailToken, setGmailToken] = useState<string | null>(null);
-  const [emailsList, setEmailsList] = useState<GmailMessage[]>([]);
-  const [gmailSearchQuery, setGmailSearchQuery] = useState<string>("");
-  const [isGmailLoading, setIsGmailLoading] = useState<boolean>(false);
-  const [gmailStatusMsg, setGmailStatusMsg] = useState<string>("");
-  const [gmailAuthError, setGmailAuthError] = useState<string | null>(null);
 
-  // Send Notes over Gmail fields
-  const [showEmailModal, setShowEmailModal] = useState<boolean>(false);
-  const [recipientEmail, setRecipientEmail] = useState<string>("");
-  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
 
   // --- PROTECTED ADMIN CONSOLE STATES ---
   const [adminKeyInput, setAdminKeyInput] = useState<string>("");
@@ -164,34 +143,7 @@ export default function App() {
     localStorage.setItem("teachsam-chathistories", JSON.stringify(chatHistories));
   }, [chatHistories]);
 
-  // Auth synchronization listener for Google Gmail
-  useEffect(() => {
-    const unsubscribe = initGmailAuth(
-      (user, token) => {
-        setGmailUser(user);
-        setGmailToken(token);
-        // Pre-fetch student inbox emails
-        loadGmailInbox(token);
-      },
-      () => {
-        setGmailUser(null);
-        setGmailToken(null);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
 
-  const loadGmailInbox = async (token: string, searchPhrase?: string) => {
-    setIsGmailLoading(true);
-    try {
-      const items = await fetchLatestEmails(token, searchPhrase);
-      setEmailsList(items);
-    } catch (err) {
-      console.error("Gmail loader failed:", err);
-    } finally {
-      setIsGmailLoading(false);
-    }
-  };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -368,93 +320,7 @@ export default function App() {
     }
   };
 
-  const triggerGmailSearch = () => {
-    if (gmailToken) {
-      loadGmailInbox(gmailToken, gmailSearchQuery);
-    }
-  };
 
-  // Compose Notes HTML and deliver notes immediately through Gmail Send
-  const handleComposeAndSendNotes = async (recipient: string, selectedLesson: Lesson) => {
-    if (!gmailToken) {
-      alert("Please connect Google Gmail on your profile first!");
-      return;
-    }
-    if (!recipient.trim()) {
-      alert("Please specify a valid recipient email.");
-      return;
-    }
-
-    setIsSendingEmail(true);
-    setGmailStatusMsg("");
-
-    const rfcHtml = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 4px solid #000; border-radius: 12px; background-color: #fcfcfc; box-shadow: 4px 4px 0px 0px #000;">
-        <h2 style="color: #1e1f24; font-size: 24px; font-weight: 800; text-transform: uppercase;">TeachSam Study Companion</h2>
-        <p style="color: #666; font-size: 14px;">Mastery notes compiled by <strong>${userName}</strong></p>
-        <hr style="border: 2px solid #000; margin: 15px 0;" />
-        <h3 style="font-size: 18px; font-weight: 800; color: #000;">Course Topic: ${selectedLesson.title}</h3>
-        <p style="font-size: 13px; color: #555;">Subject Area: ${selectedLesson.subject}</p>
-        <div style="font-size: 13px; color: #444; font-style: italic; background: #f4f4f5; padding: 12px; border-radius: 8px; border: 2px solid #e4e4e7;">
-          "${selectedLesson.content.slice(0, 400)}..."
-        </div>
-        
-        <h4 style="font-size: 15px; font-weight: 800; text-transform: uppercase; margin-top: 25px;">Explanations & Study Concept Road Map:</h4>
-        ${selectedLesson.concepts.map(c => `
-          <div style="border: 2px solid #000; padding: 12px; margin-bottom: 12px; border-radius: 8px; background: #fff;">
-            <div style="font-weight: 800; font-size: 13px; text-transform: uppercase; color: #000;">
-              [${c.status}] ${c.label}
-            </div>
-            <p style="font-size: 12px; color: #555; margin: 4px 0;">${c.description}</p>
-            ${c.analogy ? `
-              <div style="font-size: 12px; border-left: 4px solid #84cc16; padding-left: 10px; margin-top: 8px; font-style: italic; color: #1f2937;">
-                <strong>Sam's Analogy:</strong> ${c.analogy}
-              </div>
-            ` : ""}
-          </div>
-        `).join("")}
-        
-        <p style="font-size: 11px; text-align: center; color: #999; margin-top: 30px;">Proudly delivered with TeachSam Feynman Tutor. Learn concepts by explaining them to a confused peer.</p>
-      </div>
-    `;
-
-    try {
-      const success = await sendGmailMessage(
-        gmailToken,
-        recipient.trim(),
-        `Feynman Concept Roadmap: ${selectedLesson.title}`,
-        rfcHtml
-      );
-      if (success) {
-        setGmailStatusMsg("Study notes successfully mailed to your classmate!");
-        setTimeout(() => setShowEmailModal(false), 2500);
-      }
-    } catch (err: any) {
-      alert("Failed to send message: " + err.message);
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
-
-  // Import Gmail text and populate as active Feynman lesson
-  const handleImportGmailAsLesson = (msg: GmailMessage) => {
-    if (!msg.bodyText && !msg.snippet) {
-      alert("Constructing failed: selected message has no usable textual body.");
-      return;
-    }
-
-    const confirmed = window.confirm(`Import study email snippet "${msg.subject}" as a new Feynman Study Lesson?`);
-    if (!confirmed) return;
-
-    // Fill the add lesson state and trigger modal insertion automatically!
-    setNewTitle(msg.subject);
-    setNewSubject(msg.sender.split("<")[0].trim() || "Gmail Intake");
-    setNewContent(msg.bodyText || msg.snippet);
-    setIsNewLessonModalOpen(true);
-    
-    // Smooth transition
-    setCurrentTab("practice");
-  };
 
   // Secure admin fetches
   const handleFetchAdminUsersList = async () => {
@@ -1724,27 +1590,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                         <span className="hidden sm:inline">New Topic</span>
                       </button>
 
-                      {activeLesson && (
-                        <button
-                          onClick={() => {
-                            if (!gmailToken) {
-                              alert("Please connect Google Gmail on your Profile tab first!");
-                              return;
-                            }
-                            setRecipientEmail("");
-                            setGmailStatusMsg("");
-                            setShowEmailModal(true);
-                          }}
-                          title={gmailToken ? "Mail these lesson nodes and analogies to a classmate over Gmail!" : "Connect Gmail on your Profile tab to mail study notes."}
-                          className={`text-[9.5px] font-bold uppercase px-2.5 py-1.5 rounded-lg border flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:shadow active:scale-95
-                            ${gmailToken 
-                              ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100" 
-                              : "bg-zinc-100 border-zinc-200 text-gray-400 opacity-60 pointer-events-none"}`}
-                        >
-                          <Mail className="w-3.5 h-3.5 shrink-0" />
-                          <span className="hidden sm:inline">Mail Notes</span>
-                        </button>
-                      )}
+
 
                       <span className={`font-bold text-[10px] px-2.5 py-1 rounded-full border truncate shrink-0 max-w-[80px] md:max-w-none text-center
                         ${theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-400" : "bg-zinc-100 border-zinc-200 text-zinc-650"}`}>
@@ -2598,216 +2444,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                   </div>
                 </div>
 
-                {/* Gmail Integration Panel */}
-                <div className={`border-4 border-black rounded-3xl p-6 shadow-[5px_5px_0px_0px_#000] space-y-5 ${theme === "dark" ? "bg-[#181920]" : "bg-white"}`}>
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div>
-                      <h3 className={`text-lg font-black tracking-tight ${theme === "dark" ? "text-white" : "text-black"}`}>
-                        Google Gmail Connection
-                      </h3>
-                      <p className={`text-xs font-semibold ${theme === "dark" ? "text-gray-400" : "text-gray-500"}`}>
-                        Extract source transcripts from emails or dispatch Feynman summaries.
-                      </p>
-                    </div>
 
-                    {gmailUser ? (
-                      <button
-                        onClick={async () => {
-                          await logoutGmail();
-                          setGmailUser(null);
-                          setGmailToken(null);
-                          setEmailsList([]);
-                          setGmailAuthError(null);
-                        }}
-                        className="bg-red-50 hover:bg-red-100 text-red-650 border-2 border-red-200 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer"
-                      >
-                        Disconnect Gmail
-                      </button>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <button
-                          onClick={async () => {
-                            setGmailAuthError(null);
-                            try {
-                              const res = await loginWithGmail();
-                              if (res) {
-                                setGmailUser(res.user);
-                                setGmailToken(res.accessToken);
-                                loadGmailInbox(res.accessToken);
-                              }
-                            } catch (err: any) {
-                              console.error("Popup Error detail:", err);
-                              setGmailAuthError(err.message || String(err));
-                            }
-                          }}
-                          className="bg-white hover:bg-zinc-50 text-black border-2 border-black px-4 py-1.5 rounded-full text-xs font-black shadow-[2px_2px_0px_0px_#000] flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24">
-                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z"/>
-                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.96 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                          </svg>
-                          Connect Google Account (Popup)
-                        </button>
-                        <button
-                          onClick={async () => {
-                            setGmailAuthError(null);
-                            try {
-                              await loginWithGmailRedirect();
-                            } catch (err: any) {
-                              console.error("Redirect Error detail:", err);
-                              setGmailAuthError(err.message || String(err));
-                            }
-                          }}
-                          className="bg-sky-50 hover:bg-sky-100 text-sky-950 border-2 border-sky-400 px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-[2px_2px_0px_0px_#38bdf8]"
-                        >
-                          🔄 Connect via Redirect (Fail-safe)
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {gmailAuthError && (
-                    <div className="border-4 border-amber-500 bg-amber-50/90 text-amber-950 p-5 rounded-2xl shadow-[3px_3px_0px_0px_#f59e0b] space-y-3.5 text-xs">
-                      <div className="flex items-start gap-2.5">
-                        <span className="text-xl">⚠️</span>
-                        <div>
-                          <h4 className="font-extrabold text-[13px] tracking-tight text-amber-900">
-                            Browser Sandbox Security Limit Intercepted
-                          </h4>
-                          <p className="mt-1 font-medium leading-relaxed text-[11px] text-amber-900/90">
-                            Because you are testing the app embedded inside the AI Studio review frame (iframe) or your browser has strict anti-popup settings, 
-                            your browser blocks standard cross-origin popup operations.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="bg-amber-100/80 border border-amber-300 p-3 rounded-xl space-y-1.5 text-[10.5px] font-bold text-amber-900">
-                        <p className="underline uppercase tracking-wide text-[9px] font-black text-amber-850">To connect your Gmail account successfully:</p>
-                        <ol className="list-decimal list-inside space-y-1 pl-1">
-                          <li>Click <strong className="font-black">Use Redirect Method Now</strong> below (this uses a fail-safe top-level redirect that fully avoids popup blockers!).</li>
-                          <li>Alternatively, click <strong className="font-black">Open App in New Tab ↗</strong> to grant read-only syllabus transcripts and study note access in a standalone window.</li>
-                        </ol>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2.5 pt-1 font-black">
-                        <button
-                          onClick={async () => {
-                            setGmailAuthError(null);
-                            try {
-                              await loginWithGmailRedirect();
-                            } catch (err: any) {
-                              setGmailAuthError(err.message || String(err));
-                            }
-                          }}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <span>🔄 Use Redirect Method Now</span>
-                        </button>
-                        <a
-                          href={window.location.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all inline-flex items-center gap-1.5 cursor-pointer hover:no-underline"
-                        >
-                          <span>Open App in New Tab ↗</span>
-                        </a>
-                        <button
-                          onClick={() => setGmailAuthError(null)}
-                          className="bg-white hover:bg-amber-100 text-black px-3.5 py-2 rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
-                        >
-                          Dismiss Notice
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {gmailUser ? (
-                    <div className="space-y-4">
-                      {/* Connection status tag */}
-                      <div className="bg-indigo-50 border-2 border-indigo-200 p-3 rounded-xl text-xs font-semibold text-indigo-850 flex items-center justify-between">
-                        <span>Authorized user: <strong className="font-mono">{gmailUser.email}</strong></span>
-                        <span className="bg-[#84cc16] text-black text-[9px] font-black px-2 py-0.5 rounded border border-black">ACTIVE</span>
-                      </div>
-
-                      {/* Search messages bar */}
-                      <div className="flex gap-2.5">
-                        <div className={`flex items-center gap-2 border-4 border-black px-4 py-2 rounded-xl flex-1 shadow-[2px_2px_0px_0px_#000] ${theme === "dark" ? "bg-[#121318]" : "bg-slate-50"}`}>
-                          <input
-                            type="text"
-                            value={gmailSearchQuery}
-                            onChange={(e) => setGmailSearchQuery(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && triggerGmailSearch()}
-                            placeholder="Search inbox by sender, subject expression, label..."
-                            className={`bg-transparent border-none text-xs font-black w-full outline-none ${theme === "dark" ? "text-white" : "text-black"}`}
-                          />
-                        </div>
-                        <button
-                          onClick={triggerGmailSearch}
-                          className="bg-[#84cc16] hover:bg-lime-500 text-black font-black text-xs px-5 py-2 rounded-xl border-4 border-black shadow-[2px_2px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer shrink-0"
-                        >
-                          Find Emails
-                        </button>
-                      </div>
-
-                      {/* Emails list */}
-                      <div className="space-y-3">
-                        <h4 className={`text-xs font-black uppercase tracking-wider ${theme === "dark" ? "text-gray-300" : "text-gray-550"}`}>
-                          Latest Inbox Study Material Candidates
-                        </h4>
-
-                        {isGmailLoading ? (
-                          <div className="p-12 border-4 border-dashed border-zinc-200 rounded-2xl flex flex-col items-center justify-center text-center">
-                            <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin mb-2" />
-                            <p className="text-xs font-bold text-gray-400">Loading your Google Workspace emails safely...</p>
-                          </div>
-                        ) : emailsList.length === 0 ? (
-                          <p className="text-xs font-bold text-gray-400 text-center py-6 border-4 border-dashed border-zinc-200 rounded-2xl">
-                            No matching emails located. Try keyword searches like "learning", "exam", "assignment", "mitosis", "class notes".
-                          </p>
-                        ) : (
-                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                            {emailsList.map((msg) => (
-                              <div
-                                key={msg.id}
-                                className={`border-2 border-black p-3.5 rounded-xl flex items-start justify-between gap-4 transition-all hover:scale-[1.005] ${theme === "dark" ? "bg-[#121318] hover:bg-[#1a1c24]" : "bg-slate-50 hover:bg-[#f3f4f6]"}`}
-                              >
-                                <div className="space-y-1 min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-[10px] font-black uppercase bg-[#84cc16]/20 text-[#598c0d] px-1.5 py-0.5 rounded truncate">
-                                      From: {msg.sender.split("<")[0].trim() || msg.sender}
-                                    </span>
-                                    <span className="text-[9px] font-bold text-gray-400">
-                                      {msg.date.split(" ").slice(0, 4).join(" ")}
-                                    </span>
-                                  </div>
-                                  <h5 className="text-xs font-black truncate text-black">{msg.subject || "(No Subject)"}</h5>
-                                  <p className="text-[10px] text-gray-500 font-semibold line-clamp-2">{msg.snippet}</p>
-                                </div>
-
-                                <button
-                                  onClick={() => handleImportGmailAsLesson(msg)}
-                                  className="bg-white hover:bg-lime-100 text-[#598c0d] text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg border-2 border-black shadow-[1.5px_1.5px_0px_0px_#000] shrink-0 active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer"
-                                >
-                                  📥 Import
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-slate-50 border-4 border-dashed border-zinc-200 p-8 rounded-2xl text-center flex flex-col items-center justify-center gap-2">
-                      <span className="text-3xl">📧</span>
-                      <p className="text-xs font-bold text-zinc-500">Google Workspace Integrator Mode is Idle.</p>
-                      <p className="text-[10px] font-medium text-zinc-400 max-w-xs leading-relaxed">
-                        Connect your Gmail safely via OAuth to analyze complex notes, slides, or syllabus directly in your workspace browser.
-                      </p>
-                    </div>
-                  )}
-                </div>
 
                 {/* Administrative Controller Database Console */}
                 {currentUser?.email === "oluwasanmidavid53@gmail.com" && (
@@ -3614,69 +3251,6 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                   {authMode === "register" ? "Log In Instead" : "Register Instead"}
                 </button>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Email Notes Composer Modal */}
-      <AnimatePresence>
-        {showEmailModal && activeLesson && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-white border-4 border-black rounded-3xl p-8 max-w-sm w-full shadow-[6px_6px_0px_0px_#000] relative text-black"
-            >
-              <button
-                onClick={() => setShowEmailModal(false)}
-                className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 text-black border-2 border-black p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <h3 className="text-xl font-black uppercase mb-1 tracking-tight flex items-center gap-2">
-                <Mail className="w-5 h-5 text-lime-600" /> Mail Notes
-              </h3>
-              <p className="text-xs text-gray-505 font-semibold mb-6">
-                Deliver the current study roadmap nodes and Sam's analogies directly to a classmate or yourself over Gmail!
-              </p>
-
-              {gmailStatusMsg ? (
-                <div className="bg-emerald-50 border-2 border-emerald-505 text-emerald-700 text-xs font-bold p-3 rounded-xl mb-4 text-center">
-                  🎉 {gmailStatusMsg}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-gray-400">Selected Lesson</span>
-                    <div className="border-2 border-black font-black text-xs px-3 py-1.5 rounded-lg bg-zinc-50 truncate border-solid">
-                      {activeLesson.title}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-gray-450 pl-1">Recipient Classmate Email</label>
-                    <input
-                      type="email"
-                      required
-                      value={recipientEmail}
-                      onChange={(e) => setRecipientEmail(e.target.value)}
-                      placeholder="classmate@school.edu"
-                      className="border-4 border-black px-4 py-2.5 text-xs font-black rounded-xl w-full focus:bg-lime-50/20 focus:border-[#84cc16] outline-none"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => handleComposeAndSendNotes(recipientEmail, activeLesson)}
-                    disabled={isSendingEmail}
-                    className="w-full bg-[#84cc16] hover:bg-lime-500 text-black font-black text-xs uppercase py-3 border-4 border-black rounded-xl shadow-[3px_3px_0px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    {isSendingEmail ? "Delivering Mail..." : "Send Notes over Gmail"}
-                  </button>
-                </div>
-              )}
             </motion.div>
           </div>
         )}
