@@ -1,6 +1,12 @@
-Front-end: React (specifically React 18+ paired with Vite) along with TypeScript for type safety and Tailwind CSS for custom, high-contrast, responsive styling, UI by Vercel.
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-Back-end: Node.js with TypeScript and Express.
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/c8c84433-48da-4b58-ad73-b2038b3310fb
 
 ## Run Locally
 

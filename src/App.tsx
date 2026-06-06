@@ -39,6 +39,19 @@ import TestsTab from "./components/TestsTab";
 import { Lesson, ConceptNode, Message, DailyGoal, BrainStats } from "./types";
 
 
+// API Base URL configuration utilizing environmental variables or fallbacks
+const getApiBaseUrl = () => {
+  const envVal = ((import.meta as any).env?.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    if (window.location.protocol === "https:" && envVal.startsWith("http://localhost")) {
+      return "";
+    }
+  }
+  return envVal;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
 const safeReadJson = async (res: Response, errorMessage = "Request failed") => {
   const contentType = res.headers.get("content-type");
   if (!contentType || !contentType.includes("application/json")) {
@@ -157,7 +170,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -215,7 +228,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -294,7 +307,7 @@ export default function App() {
     setSupportSubmitting(true);
     setSupportSuccess(false);
     try {
-      const res = await fetch("/api/feedback/submit", {
+      const res = await fetch(`${API_BASE_URL}/api/feedback/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -331,7 +344,7 @@ export default function App() {
     try {
       const secret = adminKeyInput.trim() || "supersecure-admin-token";
       const qMail = currentUser?.email || "";
-      const res = await fetch(`/api/admin/users?adminSecret=${encodeURIComponent(secret)}&userEmail=${encodeURIComponent(qMail)}`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/users?adminSecret=${encodeURIComponent(secret)}&userEmail=${encodeURIComponent(qMail)}`);
       const data = await res.json();
       
       if (!res.ok) {
@@ -579,6 +592,7 @@ export default function App() {
 
   // Mascot dynamic facial expressions: "neutral", "confused", "amazed", "thinking", "happy"
   const [mascotExpression, setMascotExpression] = useState<"neutral" | "confused" | "amazed" | "thinking" | "happy">("happy");
+  const [lessonsError, setLessonsError] = useState<string | null>(null);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recordingTimerRef = useRef<any>(null);
@@ -587,13 +601,14 @@ export default function App() {
   const loadLessons = async (preserveStates = true, userEmailHeader?: string) => {
     try {
       const emailToUse = userEmailHeader !== undefined ? userEmailHeader : (currentUser?.email || "");
-      const resp = await fetch("/api/lessons", {
+      const resp = await fetch(`${API_BASE_URL}/api/lessons`, {
         headers: {
           "x-user-email": emailToUse
         }
       });
       const data = await resp.json();
       setLessons(data);
+      setLessonsError(null);
       if (data.length > 0) {
         // Retrieve and validate active lesson ID
         const savedActiveId = localStorage.getItem("teachsam-active-lesson-id");
@@ -622,8 +637,9 @@ export default function App() {
           }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load lessons:", err);
+      setLessonsError(`Could not connect to the Backend API at ${API_BASE_URL}. Your backend service might be offline or sleeping on Render (spins down on inactive free tier). If it's waking up, requests will resume automatically in 1-2 minutes!`);
     }
   };
 
@@ -712,7 +728,7 @@ export default function App() {
     setMascotExpression("thinking");
 
     try {
-      const response = await fetch("/api/chat/explain", {
+      const response = await fetch(`${API_BASE_URL}/api/chat/explain`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -766,7 +782,7 @@ export default function App() {
         const topicTitle = textToSend.split("\n")[0].substring(0, 50).trim();
         const contentBody = textToSend.length > 50 ? textToSend : `A comprehensive study roadmap and complete concept explanations for ${textToSend}.`;
         
-        const resp = await fetch("/api/lessons/generate", {
+        const resp = await fetch(`${API_BASE_URL}/api/lessons/generate`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
@@ -841,7 +857,7 @@ export default function App() {
     setMascotExpression("thinking");
 
     try {
-      const response = await fetch("/api/chat/evaluate", {
+      const response = await fetch(`${API_BASE_URL}/api/chat/evaluate`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -1057,7 +1073,7 @@ export default function App() {
   const handleNewTopicDiscussion = async (charId?: "sam" | "samantha" | "samson" | "sonny") => {
     try {
       const selectedChar = charId || activeCharacterId;
-      const resp = await fetch("/api/lessons/new-blank", {
+      const resp = await fetch(`${API_BASE_URL}/api/lessons/new-blank`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1143,7 +1159,7 @@ export default function App() {
             }
             const base64Data = resultString.split(",")[1];
 
-            const response = await fetch("/api/lessons/parse-upload", {
+            const response = await fetch(`${API_BASE_URL}/api/lessons/parse-upload`, {
               method: "POST",
               headers: { 
                 "Content-Type": "application/json",
@@ -1179,7 +1195,7 @@ export default function App() {
       const parsedTitle = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
 
       // Call AI to auto-generate sequential study concept nodes
-      const genResp = await fetch("/api/lessons/generate", {
+      const genResp = await fetch(`${API_BASE_URL}/api/lessons/generate`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -1252,7 +1268,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
   const handleResetData = async () => {
     if (confirm("Reset current progress and study roadmaps to original seeds?")) {
       try {
-        await fetch("/api/lessons/reset", { 
+        await fetch(`${API_BASE_URL}/api/lessons/reset`, { 
           method: "POST",
           headers: {
             "x-user-email": currentUser?.email || ""
@@ -1277,7 +1293,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
     setIsGenerating(true);
 
     try {
-      const resp = await fetch("/api/lessons/generate", {
+      const resp = await fetch(`${API_BASE_URL}/api/lessons/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1511,7 +1527,25 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
 
         {/* View Routing depending on Tab */}
         <div className="flex-1 p-4 md:p-8 pb-24 md:pb-8">
-            {/* TAB 1: PRACTICE VIEW (Chat & Interactive Graph Map) */}
+          {lessonsError && (
+            <div className={`mb-6 p-4 border-2 border-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col sm:flex-row sm:items-center gap-3 text-xs font-bold leading-normal transition-all ${theme === "dark" ? "bg-amber-950/40 border-amber-600/50 text-amber-200" : "bg-amber-50 border-amber-400 text-amber-900"}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⚠️</span>
+                <span className="font-extrabold uppercase text-[10px] tracking-wide block">Backend Connection Banner</span>
+              </div>
+              <div className="flex-1">
+                {lessonsError}
+              </div>
+              <button 
+                onClick={() => loadLessons()} 
+                className="px-3 py-1.5 border-2 border-black rounded-xl bg-white text-black font-extrabold uppercase text-[9px] hover:scale-105 active:scale-95 cursor-pointer shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] self-start sm:self-auto shrink-0"
+              >
+                Retry Connection
+              </button>
+            </div>
+          )}
+
+          {/* TAB 1: PRACTICE VIEW (Chat & Interactive Graph Map) */}
           {currentTab === "practice" && (
             <div className="space-y-6">
               {/* Segmented control for mobile/tablet to switch between Chat and Map */}
@@ -3394,7 +3428,7 @@ Let's do this! What can you tell me about the first concept: **"${createdLesson.
                     if (lessonToDelete) {
                       const lessonId = lessonToDelete.id;
                       try {
-                        const resp = await fetch(`/api/lessons/${lessonId}`, {
+                        const resp = await fetch(`${API_BASE_URL}/api/lessons/${lessonId}`, {
                           method: "DELETE",
                           headers: {
                             "x-user-email": currentUser?.email || ""

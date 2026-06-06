@@ -37,6 +37,18 @@ interface TestsTabProps {
   activeCharacterId?: "sam" | "samantha" | "samson" | "sonny";
 }
 
+const getApiBaseUrl = () => {
+  const envVal = ((import.meta as any).env?.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    if (window.location.protocol === "https:" && envVal.startsWith("http://localhost")) {
+      return "";
+    }
+  }
+  return envVal;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
 export default function TestsTab({ 
   lessons, 
   theme = "light", 
@@ -126,7 +138,7 @@ export default function TestsTab({
             if (!resultString) { return reject("Empty file."); }
             const base64Data = resultString.split(",")[1];
 
-            const response = await fetch("/api/lessons/parse-upload", {
+            const response = await fetch(`${API_BASE_URL}/api/lessons/parse-upload`, {
               method: "POST",
               headers: { 
                 "Content-Type": "application/json",
@@ -185,7 +197,7 @@ export default function TestsTab({
         throw new Error("Please upload a file source for the test!");
       }
 
-      const response = await fetch("/api/quiz/generate", {
+      const response = await fetch(`${API_BASE_URL}/api/quiz/generate`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
