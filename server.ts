@@ -30,7 +30,7 @@ const ai = new GoogleGenAI({
 });
 
 // Seed some initial memory-based lessons (users can append more)
-import { DEFAULT_LESSONS } from "./src/defaultLessons";
+import { DEFAULT_LESSONS } from "/defaultLessons";
 import fs from "fs";
 import bcryptjs from "bcryptjs";
 
