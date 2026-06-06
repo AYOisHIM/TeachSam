@@ -29,12 +29,10 @@ const ai = new GoogleGenAI({
   }
 });
 
-// Seed some initial memory-based lessons (users can append more)
-import { DEFAULT_LESSONS } from "./defaultLessons";
 import fs from "fs";
 import bcryptjs from "bcryptjs";
 
-let userLessons = [...DEFAULT_LESSONS];
+let userLessons: any[] = [];
 
 const USERS_FILE_PATH = path.join(process.cwd(), "users-db.json");
 
@@ -514,8 +512,8 @@ app.post("/api/lessons/reset", (req, res) => {
     saveUserLessons(email, [], "", "");
     res.json({ message: "Lessons refreshed!", lessons: [] });
   } else {
-    userLessons = [...DEFAULT_LESSONS];
-    res.json({ message: "Lessons refreshed to seed defaults!", lessons: userLessons });
+    userLessons = [];
+    res.json({ message: "Lessons refreshed!", lessons: userLessons });
   }
 });
 
@@ -562,30 +560,48 @@ app.post("/api/chat/evaluate", async (req, res) => {
 
     const isBlankLesson = currentLesson?.id.startsWith("blank-") || currentLesson?.title === "New Topic Study";
 
-    if (isBlankLesson) {
-      const inputLower = latestMessage.toLowerCase().trim();
-      const isIntroWord = inputLower.length < 3 || inputLower === "hi" || inputLower === "hello" || inputLower === "hey";
-      if (!isIntroWord) {
-        isNewTopicRequest = true;
-        let rawTitle = latestMessage.replace(/^(let's study|i want to teach you about|let's learn|how about|we are doing)\s+/gi, "").replace(/[?.!]/g, "").trim();
-        newTopicTitle = rawTitle.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-        
-        const titleLower = newTopicTitle.toLowerCase();
-        if (titleLower.includes("programming") || titleLower.includes("code") || titleLower.includes("python") || titleLower.includes("computer") || titleLower.includes("software") || titleLower.includes("oop")) {
-          newTopicSubject = "Computer Science";
-        } else if (titleLower.includes("physics") || titleLower.includes("quantum") || titleLower.includes("gravity") || titleLower.includes("energy") || titleLower.includes("mechanics")) {
-          newTopicSubject = "Physics";
-        } else if (titleLower.includes("history") || titleLower.includes("war")) {
-          newTopicSubject = "History";
-        } else if (titleLower.includes("econ") || titleLower.includes("finance") || titleLower.includes("market") || titleLower.includes("supply")) {
-          newTopicSubject = "Economics";
-        } else {
-          newTopicSubject = "General Study";
-        }
+    const cleanLowerInput = latestMessage.toLowerCase().trim().replace(/[?.!,;:]/g, "");
+
+    // Comprehensive list of pure greetings and smalltalk indicators
+    const exactGreetingPhrases = [
+      "hi", "hello", "hey", "sup", "yo", "howdy", "hola", "greetings", "test", "testing",
+      "hello sam", "hi sam", "hey sam", "yo sam", "sup sam", "howdy sam",
+      "hello samantha", "hi samantha", "hey samantha", "yo samantha", "hello samson", "hi samson",
+      "hello sonny", "hi sonny", "hey sonny", "yo sonny", "whats up", "what's up", "how are you",
+      "hows it going", "how's it going", "who are you", "what is your name", "whats your name",
+      "your name", "good morning", "good afternoon", "good evening", "good night", "anyone there",
+      "are you there", "can you hear me", "anybody there", "nice to meet you"
+    ];
+
+    // Determine if input is a greeting or general Smalltalk
+    const isDirectChitChat = exactGreetingPhrases.includes(cleanLowerInput) ||
+                             cleanLowerInput === "yes" || cleanLowerInput === "no" || cleanLowerInput === "ok" || cleanLowerInput === "okay" ||
+                             /^(hi|hello|hey|yo|greetings|sup)\s+(sam|samantha|samson|sonny|buddy|there|friend|classmate|teacher|tutor)$/i.test(cleanLowerInput);
+
+    if (isDirectChitChat) {
+      isChitChatRequest = true;
+      isNewTopicRequest = false;
+    } else if (isBlankLesson) {
+      // Not a direct greeting/chitchat, and we are starting with a blank canvas, so treat as a study topic prompt!
+      isNewTopicRequest = true;
+      let rawTitle = latestMessage.replace(/^(let's study|i want to teach you about|let's learn|how about|we are doing|topic is|about|study)\s+/gi, "").replace(/[?.!]/g, "").trim();
+      newTopicTitle = rawTitle.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+      
+      const titleLower = newTopicTitle.toLowerCase();
+      if (titleLower.includes("programming") || titleLower.includes("code") || titleLower.includes("python") || titleLower.includes("computer") || titleLower.includes("software") || titleLower.includes("oop")) {
+        newTopicSubject = "Computer Science";
+      } else if (titleLower.includes("physics") || titleLower.includes("quantum") || titleLower.includes("gravity") || titleLower.includes("energy") || titleLower.includes("mechanics")) {
+        newTopicSubject = "Physics";
+      } else if (titleLower.includes("history") || titleLower.includes("war")) {
+        newTopicSubject = "History";
+      } else if (titleLower.includes("econ") || titleLower.includes("finance") || titleLower.includes("market") || titleLower.includes("supply")) {
+        newTopicSubject = "Economics";
+      } else {
+        newTopicSubject = "General Study";
       }
     }
 
-    if (process.env.GEMINI_API_KEY) {
+    if (!isChitChatRequest && process.env.GEMINI_API_KEY) {
       try {
         const classificationResponse = await ai.models.generateContent({
           model: "gemini-3.5-flash",
@@ -631,23 +647,18 @@ Respond strictly with a JSON object.`,
         const parsedClass = JSON.parse(classificationResponse.text || "{}");
         if (parsedClass.intent === "newTopic" && parsedClass.topicTitle) {
           isNewTopicRequest = true;
+          isChitChatRequest = false;
           newTopicTitle = parsedClass.topicTitle;
           newTopicSubject = parsedClass.subject || "General Study";
         } else if (parsedClass.intent === "chitchat") {
           isChitChatRequest = true;
+          isNewTopicRequest = false;
           if (parsedClass.replyText) {
             chitChatResponse = parsedClass.replyText;
-          } else {
-            if (characterId === "samantha") {
-              chitChatResponse = `Hello my dear ${userName}! I love learning with you so much! 💕 How are you feeling today? Whenever you're ready, I would absolutely love to hear your sweet explanation of **${activeConcept?.label || 'this concept'}**! 🌸💖`;
-            } else if (characterId === "samson") {
-              chitChatResponse = `Ugh, look who decided to show up. ${userName}, huh? Samson here. Stop wasting my time and give me your explanation for **${activeConcept?.label || 'the concept'}** already. I'm waiting.`;
-            } else if (characterId === "sonny") {
-              chitChatResponse = `Yo ${userName}! Bruh, what's up? 😎 Sonny here, just chillin' and ready to learn. No cap, tell me how **${activeConcept?.label || 'the concept'}** works, let's keep it real!`;
-            } else {
-              chitChatResponse = `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 How are you doing? Whenever you are ready, could you teach me more about **${activeConcept?.label || 'the concept'}**? My classmate notes are still empty!`;
-            }
           }
+        } else if (parsedClass.intent === "teaching") {
+          isNewTopicRequest = false;
+          isChitChatRequest = false;
         }
       } catch (err) {
         console.error("Error during dynamic intent check:", err);
@@ -666,6 +677,7 @@ Respond strictly with a JSON object.`,
       
       if (isGreetingOrChitchat) {
         isChitChatRequest = true;
+        isNewTopicRequest = false;
         if (inputLower.includes("name") || inputLower.includes("who are you")) {
           if (characterId === "samantha") {
             chitChatResponse = `Hey my dear! I'm **Samantha**! 🎀 Socratic tutor and dear companion. I love learning with you! Explain **${activeConcept?.label || 'this concept'}** to me so we can explore together! 💕`;
@@ -729,8 +741,34 @@ Respond strictly with a JSON object.`,
 
         if (matchedType && matchedType.toLowerCase() !== currentLesson?.title.toLowerCase()) {
           isNewTopicRequest = true;
+          isChitChatRequest = false;
           newTopicTitle = matchedType;
           newTopicSubject = matchedSubject;
+        }
+      }
+    }
+
+    // Populate tailored character responses if not set yet for chitchat/greetings
+    if (isChitChatRequest && !chitChatResponse) {
+      if (isBlankLesson) {
+        if (characterId === "samantha") {
+          chitChatResponse = `Hello my sweet dear ${userName}! 💕 I am so happy to be here with you! What wonderful subject or topic would you love to learn today? Tell me, and we'll build a lovely study roadmap together! 🌸💖`;
+        } else if (characterId === "samson") {
+          chitChatResponse = `Yeah, what do you want? I'm Samson. Stop wasting my time with greetings and tell me what topic we are studying today. Type the topic below so we can actually get to work.`;
+        } else if (characterId === "sonny") {
+          chitChatResponse = `Hey ${userName}! Yo, Sonny in the house! 😎 What high-vibe topic are we learning today, bruh? Let me know below and I'll prep our board, no cap!`;
+        } else {
+          chitChatResponse = `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 I'm super excited to learn with you. What topic do you want to master today? Type a subject or class name below, and I'll automatically assemble an interactive roadmap for us!`;
+        }
+      } else {
+        if (characterId === "samantha") {
+          chitChatResponse = `Hello my dear ${userName}! I love learning with you so much! 💕 How are you feeling today? Whenever you're ready, I would absolutely love to hear your sweet explanation of **${activeConcept?.label || 'this concept'}**! 🌸💖`;
+        } else if (characterId === "samson") {
+          chitChatResponse = `Ugh, look who decided to show up. ${userName}, huh? Samson here. Stop wasting my time and give me your explanation for **${activeConcept?.label || 'the concept'}** already. I'm waiting.`;
+        } else if (characterId === "sonny") {
+          chitChatResponse = `Yo ${userName}! Bruh, what's up? 😎 Sonny here, just chillin' and ready to learn. No cap, tell me how **${activeConcept?.label || 'the concept'}** works, let's keep it real!`;
+        } else {
+          chitChatResponse = `Hey ${userName}! Yo, I'm Sam, your study buddy! 😄 How are you doing? Whenever you are ready, could you teach me more about **${activeConcept?.label || 'the concept'}**? My classmate notes are still empty!`;
         }
       }
     }
