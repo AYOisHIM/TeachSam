@@ -41,13 +41,15 @@ import { Lesson, ConceptNode, Message, DailyGoal, BrainStats } from "./types";
 
 // API Base URL configuration utilizing environmental variables or fallbacks
 const getApiBaseUrl = () => {
-  const envVal = ((import.meta as any).env?.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+  const envVal = ((import.meta as any).env?.VITE_API_URL || "").replace(/\/$/, "");
+  if (envVal) return envVal;
+  
   if (typeof window !== "undefined") {
-    if (window.location.protocol === "https:" && envVal.startsWith("http://localhost")) {
-      return "";
-    }
+    // If running in browser and VITE_API_URL is empty, always use relative paths
+    return "";
   }
-  return envVal;
+  // Fallback for node or server-side renders if any
+  return "http://localhost:3000";
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -639,7 +641,8 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Failed to load lessons:", err);
-      setLessonsError(`Could not connect to the Backend API at ${API_BASE_URL}. Your backend service might be offline or sleeping on Render (spins down on inactive free tier). If it's waking up, requests will resume automatically in 1-2 minutes!`);
+      const errorTarget = API_BASE_URL || window.location.origin;
+      setLessonsError(`Could not connect to the Backend API at ${errorTarget}. Your backend service might be offline or sleeping (if running on a free tier or waking up). If it's waking up, please give it 1-2 minutes and click Retry!`);
     }
   };
 

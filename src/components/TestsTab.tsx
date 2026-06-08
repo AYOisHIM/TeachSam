@@ -38,13 +38,15 @@ interface TestsTabProps {
 }
 
 const getApiBaseUrl = () => {
-  const envVal = ((import.meta as any).env?.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+  const envVal = ((import.meta as any).env?.VITE_API_URL || "").replace(/\/$/, "");
+  if (envVal) return envVal;
+  
   if (typeof window !== "undefined") {
-    if (window.location.protocol === "https:" && envVal.startsWith("http://localhost")) {
-      return "";
-    }
+    // If running in browser and VITE_API_URL is empty, always use relative paths
+    return "";
   }
-  return envVal;
+  // Fallback for node or server-side renders if any
+  return "http://localhost:3000";
 };
 
 const API_BASE_URL = getApiBaseUrl();
