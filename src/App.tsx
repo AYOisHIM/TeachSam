@@ -52,7 +52,7 @@ const getApiBaseUrl = () => {
   return "http://localhost:3000";
 };
 
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = "https://teachsam-backend.onrender.com";
 
 const safeReadJson = async (res: Response, errorMessage = "Request failed") => {
   const contentType = res.headers.get("content-type");

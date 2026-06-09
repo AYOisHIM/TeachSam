@@ -49,7 +49,7 @@ const getApiBaseUrl = () => {
   return "http://localhost:3000";
 };
 
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = "https://teachsam-backend.onrender.com";
 
 export default function TestsTab({ 
   lessons, 
